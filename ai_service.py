@@ -1,17 +1,51 @@
 import openai
 import os
 
-# Инициализируем клиент один раз. Он автоматически подхватит ключ из .env
-client = openai.OpenAI()
+# --- ИНТЕГРАЦИЯ С OPENROUTER (С "ЛЕНИВОЙ" ИНИЦИАЛИЗАЦИЕЙ) ---
+
+# Глобальная переменная для кеширования клиента
+_client = None
+
+def _initialize_client():
+    """
+    Инициализирует и возвращает AI-клиент. Выполняется только один раз.
+    """
+    global _client
+    if _client:
+        return _client
+
+    api_key = os.getenv("OPENROUTER_API_KEY")
+    if not api_key:
+        print("!!! ВНИМАНИЕ: OPENROUTER_API_KEY не найден. AI-сервис не будет работать.")
+        return None
+
+    project_name = "ProposalBot"
+    project_url = "https://github.com" # URL можно указать любой, это для заголовков
+
+    _client = openai.OpenAI(
+        base_url="https://openrouter.ai/api/v1",
+        api_key=api_key,
+        default_headers={
+            "HTTP-Referer": project_url,
+            "X-Title": project_name,
+        },
+    )
+    return _client
 
 def get_proposal_text(prompt):
     """
-    Отправляет промпт в OpenAI API и возвращает сгенерированный текст
+    Отправляет промпт в AI API и возвращает сгенерированный текст
     коммерческого предложения.
     """
+    client = _initialize_client()
+    if not client:
+        return "Ошибка: AI-клиент не был инициализирован. Проверьте наличие OPENROUTER_API_KEY в переменных окружения Railway."
+
+    # Получаем модель из переменных окружения в момент вызова
+    ai_model = os.getenv("AI_MODEL", "mistralai/mistral-7b-instruct:free")
+
     try:
-        # Промпт для AI, который будет формировать КП
-        # Мы "зашиваем" инструкцию для AI прямо здесь
+        # Универсальный промпт для AI
         system_prompt = """
 Ты — AI-ассистент, который помогает фрилансерам составлять коммерческие предложения (КП).
 Твоя задача — на основе краткого описания проекта от пользователя сгенерировать структурированный, вежливый и убедительный текст для КП.
@@ -27,7 +61,7 @@ def get_proposal_text(prompt):
 """
 
         response = client.chat.completions.create(
-            model="gpt-3.5-turbo", # Начнем с быстрой и недорогой модели
+            model=ai_model,
             messages=[
                 {"role": "system", "content": system_prompt},
                 {"role": "user", "content": prompt}
@@ -37,21 +71,20 @@ def get_proposal_text(prompt):
         return response.choices[0].message.content.strip()
 
     except Exception as e:
-        # Улучшенное логирование ошибки
-        print(f"!!! Произошла критическая ошибка при обращении к OpenAI: {e}")
+        print(f"!!! Произошла критическая ошибка при обращении к AI-сервису: {e}")
         return f"Ошибка AI: Не удалось сгенерировать текст. Проверьте консоль, где запущен бот, для деталей."
 
 if __name__ == '__main__':
-    # Пример для тестирования модуля
-    # Для этого теста нужно, чтобы в переменных окружения был OPENAI_API_KEY
+    # Пример для тестирования модуля локально
     from dotenv import load_dotenv
     load_dotenv()
     
-    # Проверка наличия ключа перед тестом
-    if not os.getenv("OPENAI_API_KEY"):
-        print("Ключ OPENAI_API_KEY не найден. Невозможно выполнить тест.")
-    else:
+    # Тест запускается только если есть ключ
+    if os.getenv("OPENROUTER_API_KEY"):
+        print(f"Тестируем с моделью: {os.getenv('AI_MODEL', 'mistralai/mistral-7b-instruct:free')}")
         test_prompt = "Нужно сделать лендинг для кофейни. Стильный, современный, с картой."
         proposal = get_proposal_text(test_prompt)
         print("--- Сгенерированное предложение ---")
         print(proposal)
+    else:
+        print("Ключ OPENROUTER_API_KEY не найден в .env файле. Невозможно выполнить тест.")
