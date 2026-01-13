@@ -41,8 +41,8 @@ def get_proposal_text(prompt):
     if not client:
         return "Ошибка: AI-клиент не был инициализирован. Проверьте наличие OPENROUTER_API_KEY в переменных окружения Railway."
 
-    # Получаем модель из переменных окружения в момент вызова
-    ai_model = os.getenv("AI_MODEL", "mistralai/mistral-7b-instruct:free")
+    # ВРЕМЕННОЕ РЕШЕНИЕ: Жестко задаем модель, чтобы обойти ошибку сборки Railway
+    ai_model = "mistralai/mistral-7b-instruct:free"
 
     try:
         # Универсальный промпт для AI
@@ -81,7 +81,8 @@ if __name__ == '__main__':
     
     # Тест запускается только если есть ключ
     if os.getenv("OPENROUTER_API_KEY"):
-        print(f"Тестируем с моделью: {os.getenv('AI_MODEL', 'mistralai/mistral-7b-instruct:free')}")
+        # Используем ту же модель, что и в основной функции для консистентности
+        print(f"Тестируем с моделью: {'mistralai/mistral-7b-instruct:free'}")
         test_prompt = "Нужно сделать лендинг для кофейни. Стильный, современный, с картой."
         proposal = get_proposal_text(test_prompt)
         print("--- Сгенерированное предложение ---")
