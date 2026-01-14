@@ -7,18 +7,15 @@ from dotenv import load_dotenv
 from telegram import Update
 from telegram.ext import (
     Application, CommandHandler, MessageHandler, filters,
-    ContextTypes, ConversationHandler
+    ContextTypes, ConversationHandler, TypeHandler
 )
 
-# Импорты проекта
 from ai_service import get_proposal_text
 from pdf_generator import create_proposal_pdf
 from utils import ensure_font_exists
 
-# Загрузка переменных окружения
 load_dotenv()
 
-# Настройка логирования (важно выводить в stdout для Railway)
 logging.basicConfig(
     format='%(asctime)s - %(name)s - %(levelname)s - %(message)s',
     level=logging.INFO,
@@ -27,6 +24,12 @@ logging.basicConfig(
 logger = logging.getLogger(__name__)
 
 ABOUT_YOU, ABOUT_CLIENT, TASK_INFO = range(3)
+
+# --- Хендлер для логирования всех входящих сообщений ---
+async def log_update(update: Update, context: ContextTypes.DEFAULT_TYPE):
+    if update.message:
+        logger.info(f"📩 Новое сообщение от {update.message.from_user.first_name}: {update.message.text}")
+# -------------------------------------------------------
 
 async def start(update: Update, context: ContextTypes.DEFAULT_TYPE) -> int:
     await update.message.reply_text(
@@ -52,16 +55,12 @@ async def task_info(update: Update, context: ContextTypes.DEFAULT_TYPE) -> int:
     
     await update.message.reply_text("🤖 Анализирую задачу и пишу текст...")
 
-    # Подготовка промпта
     prompt = (
         f"Исполнитель: {context.user_data['about_you']}\n"
         f"Клиент: {context.user_data['about_client']}\n"
         f"Задача: {context.user_data['task_info']}"
     )
 
-    # 1. Генерация текста (IO-bound, но библиотека синхронная, запускаем в executor)
-    # Если библиотека поддерживает async, лучше использовать его.
-    # Но для google-generativeai сейчас безопаснее использовать run_in_executor
     loop = asyncio.get_running_loop()
     
     try:
@@ -73,7 +72,6 @@ async def task_info(update: Update, context: ContextTypes.DEFAULT_TYPE) -> int:
 
     await update.message.reply_text("📄 Верстаю PDF документ...")
 
-    # 2. Генерация PDF (CPU-bound, ОБЯЗАТЕЛЬНО выносить в executor)
     try:
         pdf_bytes = await loop.run_in_executor(None, create_proposal_pdf, proposal_text)
         
@@ -98,10 +96,7 @@ async def cancel(update: Update, context: ContextTypes.DEFAULT_TYPE) -> int:
     return ConversationHandler.END
 
 async def post_init(application: Application) -> None:
-    """Выполняется один раз перед запуском бота."""
     logger.info("⚙️ Проверка системных требований...")
-    
-    # Проверяем шрифт при старте, чтобы не было сюрпризов в рантайме
     font = ensure_font_exists()
     if font:
         logger.info(f"✅ Шрифт готов: {font}")
@@ -114,8 +109,10 @@ def main() -> None:
         logger.critical("❌ TELEGRAM_BOT_TOKEN не найден!")
         sys.exit(1)
 
-    # Используем post_init для проверки окружения
     application = Application.builder().token(TOKEN).post_init(post_init).build()
+
+    # Регистрируем логгер обновлений ПЕРВЫМ, чтобы видеть всё
+    application.add_handler(TypeHandler(Update, log_update), group=-1)
 
     conv_handler = ConversationHandler(
         entry_points=[CommandHandler('start', start)],
@@ -125,6 +122,7 @@ def main() -> None:
             TASK_INFO: [MessageHandler(filters.TEXT & ~filters.COMMAND, task_info)],
         },
         fallbacks=[CommandHandler('cancel', cancel)],
+        allow_reentry=True  # <--- ВАЖНОЕ ИСПРАВЛЕНИЕ: Разрешает перезапуск бота в любой момент
     )
 
     application.add_handler(conv_handler)
