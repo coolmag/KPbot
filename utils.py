@@ -9,30 +9,34 @@ BASE_DIR = Path(__file__).parent.resolve()
 FONT_FILENAME = "DejaVuSans.ttf"
 FONT_PATH = BASE_DIR / FONT_FILENAME
 
-# FIX: Стабильная ссылка на конкретный релиз (version_2_37)
-FONT_URL = "https://raw.githubusercontent.com/dejavu-fonts/dejavu-fonts/version_2_37/ttf/DejaVuSans.ttf"
+# FIX: Используем Google Fonts CDN для стабильности
+FONT_URL = (
+    "https://fonts.gstatic.com/s/"
+    "dejavusans/v27/DejaVuSans.ttf"
+)
 
-def ensure_font_exists() -> str:
+def ensure_font_exists() -> str | None:
     """
     Проверяет наличие шрифта. Если его нет — скачивает.
     Возвращает путь к шрифту или None (graceful degradation).
     """
-    if FONT_PATH.exists():
-        logger.info(f"✅ Шрифт найден: {FONT_PATH}")
+    try:
+        if FONT_PATH.exists():
+            logger.info(f"✅ Шрифт найден: {FONT_PATH}")
+            return str(FONT_PATH)
+
+        logger.info(f"⬇️ Скачиваю шрифт с {FONT_URL}...")
+        
+        # Используем httpx с таймаутом для надежности, как и ранее
+        with httpx.Client(timeout=10.0, follow_redirects=True) as client:
+            response = client.get(FONT_URL)
+            response.raise_for_status() # Вызывает исключение для HTTP ошибок
+
+            FONT_PATH.write_bytes(response.content) # Сохраняем как байты
+            
+        logger.info("✅ Шрифт успешно сохранён.")
         return str(FONT_PATH)
 
-    logger.info(f"⬇️ Скачиваю шрифт с {FONT_URL}...")
-    try:
-        with httpx.Client(timeout=30.0, follow_redirects=True) as client:
-            response = client.get(FONT_URL)
-            response.raise_for_status()
-            
-            with open(FONT_PATH, "wb") as f:
-                f.write(response.content)
-                
-        logger.info(f"✅ Шрифт успешно сохранён: {FONT_PATH}")
-        return str(FONT_PATH)
-    except Exception as e:
-        logger.error(f"❌ Ошибка скачивания шрифта: {e}")
-        # Возвращаем None, чтобы pdf_generator использовал Helvetica и не крашил бота
+    except Exception:
+        logger.exception("❌ Не удалось загрузить шрифт")
         return None
