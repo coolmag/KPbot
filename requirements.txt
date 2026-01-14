@@ -2,3 +2,4 @@ python-telegram-bot
 openai
 reportlab
 python-dotenv
+g4f

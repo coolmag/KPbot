@@ -70,8 +70,28 @@ async def task_info(update: Update, context: ContextTypes.DEFAULT_TYPE) -> int:
     await update.message.reply_text("🤖 Думаю над коммерческим предложением...")
 
     # Генерируем КП
-    proposal_text = get_proposal_text(prompt)
-    proposal_text_pdf = proposal_text.replace('\n', '<br/>')
+    try:
+        proposal_text = get_proposal_text(prompt)
+        if "Ошибка" in proposal_text or "Connection error" in proposal_text:
+            await update.message.reply_text(
+                "⚠️ Временные проблемы с AI. Вот шаблон КП:\n\n"
+                "## Коммерческое предложение\n\n"
+                f"**Задача:** {context.user_data['task_info']}\n\n"
+                "## Этапы работы:\n"
+                "1. Анализ требований\n"
+                "2. Разработка\n"
+                "3. Тестирование\n\n"
+                "## Сроки: [Уточняются]\n"
+                "## Стоимость: [Уточняется]\n\n"
+                "Готов обсудить детали."
+            )
+            return ConversationHandler.END
+            
+        proposal_text_pdf = proposal_text.replace('\n', '<br/>')
+    except Exception as e:
+        logger.error(f"AI error: {e}")
+        await update.message.reply_text(f"Ошибка AI: {e}")
+        return ConversationHandler.END
 
     await update.message.reply_text("📄 Создаю PDF...")
 
@@ -111,11 +131,21 @@ def main() -> None:
 
     # ConversationHandler для сбора данных в 3 этапа
     conv_handler = ConversationHandler(
-        entry_points=[CommandHandler('start', start)],
+        entry_points=[
+            CommandHandler('start', start),
+            # Разрешаем /start в группах
+            CommandHandler('start', start, filters=filters.ALL)
+        ],
         states={
-            ABOUT_YOU: [MessageHandler(filters.TEXT & ~filters.COMMAND, about_you)],
-            ABOUT_CLIENT: [MessageHandler(filters.TEXT & ~filters.COMMAND, about_client)],
-            TASK_INFO: [MessageHandler(filters.TEXT & ~filters.COMMAND, task_info)],
+            ABOUT_YOU: [
+                MessageHandler(filters.ALL & ~filters.COMMAND, about_you)
+            ],
+            ABOUT_CLIENT: [
+                MessageHandler(filters.ALL & ~filters.COMMAND, about_client)
+            ],
+            TASK_INFO: [
+                MessageHandler(filters.ALL & ~filters.COMMAND, task_info)
+            ],
         },
         fallbacks=[CommandHandler('cancel', cancel)],
     )
