@@ -121,40 +121,51 @@ async def cancel(update: Update, context: ContextTypes.DEFAULT_TYPE) -> int:
 
 def main() -> None:
     """Основная функция для запуска бота."""
+    logger.info("Инициализация приложения...")
     TOKEN = os.getenv("TELEGRAM_BOT_TOKEN")
+    
     if not TOKEN:
-        print("Ошибка: Токен TELEGRAM_BOT_TOKEN не найден. Проверьте ваш .env файл.")
+        logger.critical("Ошибка: Токен TELEGRAM_BOT_TOKEN не найден!")
         return
+    
+    logger.info(f"Токен загружен (первые 4 символа): {TOKEN[:4]}...")
 
-    # Создаем приложение
-    application = Application.builder().token(TOKEN).build()
+    try:
+        # Создаем приложение
+        application = Application.builder().token(TOKEN).build()
 
-    # ConversationHandler для сбора данных в 3 этапа
-    conv_handler = ConversationHandler(
-        entry_points=[
-            CommandHandler('start', start),
-            # Разрешаем /start в группах
-            CommandHandler('start', start, filters=filters.ALL)
-        ],
-        states={
-            ABOUT_YOU: [
-                MessageHandler(filters.ALL & ~filters.COMMAND, about_you)
+        # ConversationHandler для сбора данных в 3 этапа
+        conv_handler = ConversationHandler(
+            entry_points=[
+                CommandHandler('start', start),
+                # Разрешаем /start в группах
+                CommandHandler('start', start, filters=filters.ALL)
             ],
-            ABOUT_CLIENT: [
-                MessageHandler(filters.ALL & ~filters.COMMAND, about_client)
-            ],
-            TASK_INFO: [
-                MessageHandler(filters.ALL & ~filters.COMMAND, task_info)
-            ],
-        },
-        fallbacks=[CommandHandler('cancel', cancel)],
-    )
+            states={
+                ABOUT_YOU: [
+                    MessageHandler(filters.ALL & ~filters.COMMAND, about_you)
+                ],
+                ABOUT_CLIENT: [
+                    MessageHandler(filters.ALL & ~filters.COMMAND, about_client)
+                ],
+                TASK_INFO: [
+                    MessageHandler(filters.ALL & ~filters.COMMAND, task_info)
+                ],
+            },
+            fallbacks=[CommandHandler('cancel', cancel)],
+        )
 
-    application.add_handler(conv_handler)
-    application.add_handler(CommandHandler('cancel', cancel))
+        application.add_handler(conv_handler)
+        application.add_handler(CommandHandler('cancel', cancel))
 
-    logger.info("Бот запускается...")
-    application.run_polling()
+        logger.info("Бот запускается в режиме polling...")
+        application.run_polling()
+
+    except Exception as e:
+        logger.critical(f"КРИТИЧЕСКАЯ ОШИБКА ПРИ ЗАПУСКЕ: {e}", exc_info=True)
+        # Выход с ошибкой, чтобы Railway показал сбой
+        import sys
+        sys.exit(1)
 
 if __name__ == '__main__':
     main()
