@@ -18,7 +18,7 @@ if USE_G4F:
     PROVIDERS = [
         Provider.LambdaChat,
         Provider.You,
-        Provider.Bing,
+        Provider.bing,
         Provider.GPTalk,
         Provider.DeepInfra,
     ]
