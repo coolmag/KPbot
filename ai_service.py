@@ -10,7 +10,6 @@ except ImportError:
 if USE_G4F:
     # === G4F (GPT4Free) — БЕСПЛАТНО ===
     from g4f.client import Client
-    from g4f.models import gpt_4o, claude_sonnet
     from g4f import Provider
 
     _g4f_client = None
@@ -54,7 +53,7 @@ if USE_G4F:
         for provider in PROVIDERS:
             try:
                 response = client.chat.completions.create(
-                    model=g4f.models.gpt_4o,
+                    model="gpt-4o",
                     messages=[
                         {"role": "system", "content": SYSTEM_PROMPT},
                         {"role": "user", "content": prompt_data}
@@ -67,21 +66,22 @@ if USE_G4F:
                 print(f"G4F provider {provider.__name__} failed: {e}")
                 continue
 
-        # Все провайдеры не работают — пробуем Claude как резерв
-        for provider in [Provider.You, Provider.LambdaChat]:
-            try:
-                response = client.chat.completions.create(
-                    model=g4f.models.claude_sonnet,
-                    messages=[
-                        {"role": "system", "content": SYSTEM_PROMPT},
-                        {"role": "user", "content": prompt_data}
-                    ],
-                    provider=provider,
-                )
-                return response.choices[0].message.content.strip()
-            except Exception as e:
-                print(f"G4F Claude fallback {provider.__name__} failed: {e}")
-                continue
+        # Все провайдеры не работают — пробуем разные модели
+        for model in ["claude-3-5-sonnet", "gemini-pro"]:
+            for provider in [Provider.You, Provider.LambdaChat]:
+                try:
+                    response = client.chat.completions.create(
+                        model=model,
+                        messages=[
+                            {"role": "system", "content": SYSTEM_PROMPT},
+                            {"role": "user", "content": prompt_data}
+                        ],
+                        provider=provider,
+                    )
+                    return response.choices[0].message.content.strip()
+                except Exception as e:
+                    print(f"G4F {model} via {provider.__name__} failed: {e}")
+                    continue
 
         return (f"⚠️ Все AI-сервисы временно недоступны.\n\n"
                 f"Попробуйте позже или обратитесь к админу.\n\n"
