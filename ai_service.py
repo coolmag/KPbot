@@ -1,93 +1,74 @@
 import os
+import httpx
+import logging
 
-# === OpenRouter (бесплатные модели) ===
-import openai
-
-_client = None
-
-# Бесплатные модели на OpenRouter (обновлено 2026)
-FREE_MODELS = [
-    "google/gemma-2-9b-it:free",
-    "meta-llama/llama-3.1-8b-instruct:free",
-    "mistralai/mistral-7b-instruct:free",
-    "deepseek/deepseek-chat:free",
-]
-
-SYSTEM_PROMPT = """
-Ты — профессиональный копирайтер и маркетолог, который пишет коммерческие предложения для B2B.
-
-СТРУКТУРА КП:
-1. Приветствие (персонализированное под клиента)
-2. Понимание задачи (перефразируй потребности клиента)
-3. Предлагаемое решение (конкретные этапы работы)
-4. Портфолио/опыт
-5. Сроки и стоимости (реалистичные оценки или "[Уточняется]")
-6. Гарантии и условия
-7. Призыв к действию
-
-СТИЛЬ: Профессиональный, конкретный, с фокусом на выгодах для клиента.
-Используй нумерованные списки для этапов работы.
-"""
+# Настраиваем логгер
+logger = logging.getLogger(__name__)
 
 
-def _initialize_client():
-    global _client
-    if _client:
-        return _client
-
-    api_key = os.getenv("OPENROUTER_API_KEY")
+def get_proposal_text(prompt):
+    """
+    Отправляет запрос в Aristotle AI (Harmonic) для генерации коммерческого предложения.
+    Бесплатный API с высокой точностью ответов.
+    """
+    api_key = os.getenv("ARISTOTLE_API_KEY")
     if not api_key:
-        print("!!! ВНИМАНИЕ: OPENROUTER_API_KEY не найден в переменных окружения.")
-        return None
+        logger.error("ARISTOTLE_API_KEY не найден в переменных окружения.")
+        return "Ошибка конфигурации: нет ключа API."
 
-    _client = openai.OpenAI(
-        base_url="https://openrouter.ai/api/v1",
-        api_key=api_key,
-        max_retries=5,
-        timeout=60.0,
-        default_headers={
-            "HTTP-Referer": "https://github.com",
-            "X-Title": "AI Client Pilot",
-        },
+    url = "https://aristotle.harmonic.fun/v1/chat/completions"
+
+    headers = {
+        "Authorization": f"Bearer {api_key}",
+        "Content-Type": "application/json",
+    }
+
+    # Системный промпт для коммерческих предложений
+    system_prompt = (
+        "Ты — профессиональный помощник для составления коммерческих предложений на русском языке. "
+        "Твоя задача — на основе краткого описания составить структурированное КП. "
+        "Структура: Приветствие, Понимание задачи, Решение, Примерные сроки, Призыв к действию. "
+        "Будь краток, убедителен и конкретен."
     )
-    return _client
 
+    data = {
+        "model": "aristotle",
+        "messages": [
+            {"role": "system", "content": system_prompt},
+            {"role": "user", "content": prompt}
+        ],
+        "temperature": 0.7,
+        "max_tokens": 1000,
+    }
 
-def get_proposal_text(prompt_data):
-    """Генерирует КП через OpenRouter с авто-выбором модели."""
-    client = _initialize_client()
-    if not client:
-        return "⚠️ AI не настроен. Добавьте OPENROUTER_API_KEY в переменные окружения."
+    timeout_settings = httpx.Timeout(60.0, connect=15.0)
 
-    last_error = None
+    try:
+        with httpx.Client(timeout=timeout_settings) as client:
+            response = client.post(url, headers=headers, json=data)
 
-    for model in FREE_MODELS:
-        try:
-            print(f"Пробуем: {model}")
-            response = client.chat.completions.create(
-                model=model,
-                messages=[
-                    {"role": "system", "content": SYSTEM_PROMPT},
-                    {"role": "user", "content": prompt_data}
-                ]
-            )
-            print(f"✅ Успех: {model}")
-            return response.choices[0].message.content.strip()
-        except Exception as e:
-            last_error = e
-            print(f"❌ Ошибка {model}: {type(e).__name__}")
-            continue
+            if response.status_code == 200:
+                response_json = response.json()
+                if 'choices' in response_json and len(response_json['choices']) > 0:
+                    content = response_json['choices'][0]['message']['content'].strip()
+                    logger.info("✅ Aristotle AI: успех")
+                    return content
+                else:
+                    logger.warning(f"Aristotle: пустой ответ: {response.text[:200]}")
+            else:
+                logger.warning(f"Aristotle ошибка {response.status_code}: {response.text[:200]}")
 
-    print(f"💥 Все модели не работают. Последняя ошибка: {last_error}")
-    return (f"⚠️ Все AI-сервисы временно недоступны.\n\n"
-            f"Ошибка: {type(last_error).__name__}\n"
-            f"Попробуйте через несколько минут.")
+    except httpx.RequestError as e:
+        logger.warning(f"Aristotle сетевая ошибка: {e}")
+
+    return "⚠️ AI-сервис временно недоступен. Попробуйте через минуту."
 
 
 if __name__ == '__main__':
-    print("Тестируем AI...")
-    
-    if os.getenv("OPENROUTER_API_KEY"):
+    print("Тестируем Aristotle AI...")
+
+    api_key = os.getenv("ARISTOTLE_API_KEY")
+    if api_key:
         test_prompt = """Кто исполнитель: Веб-студия WebArt
 Кто клиент: Сеть кофеен CoffeeBreak
 Задача: Лендинг с онлайн-заказом"""
@@ -97,4 +78,5 @@ if __name__ == '__main__':
         print("Результат:")
         print(result)
     else:
-        print("OPENROUTER_API_KEY не найден в .env")
+        print("ARISTOTLE_API_KEY не найден в переменных окружения")
+
