@@ -6,7 +6,10 @@ from dotenv import load_dotenv
 load_dotenv()
 
 from telegram import Update
-from telegram.ext import Application, CommandHandler, MessageHandler, filters, ContextTypes
+from telegram.ext import (
+    Application, CommandHandler, MessageHandler, filters,
+    ContextTypes, ConversationHandler
+)
 
 # Импортируем наши модули
 from ai_service import get_proposal_text
@@ -19,61 +22,81 @@ logging.basicConfig(
 )
 logger = logging.getLogger(__name__)
 
+# Состояния для FSM
+ABOUT_YOU, ABOUT_CLIENT, TASK_INFO = range(3)
+
 
 async def start(update: Update, context: ContextTypes.DEFAULT_TYPE) -> None:
     """Обработчик команды /start."""
     await update.message.reply_text(
-        "Здравствуйте! Я ваш AI-ассистент для создания коммерческих предложений.\n\n"
-        "Просто отправьте мне краткое описание проекта, и я подготовлю для вас PDF-файл с предложением."
+        "🎯 *AI Client Pilot* — Генератор коммерческих предложений\n\n"
+        "Чтобы составить качественное КП, мне нужно узнать несколько деталей.\n\n"
+        "📝 *Кто вы?* (Ваша компания/специализация, чем занимаетесь)",
+        parse_mode='Markdown'
     )
+    return ABOUT_YOU
 
 
-async def generate_proposal(update: Update, context: ContextTypes.DEFAULT_TYPE) -> None:
-    """Генерирует КП на основе сообщения пользователя."""
-    # --- НАДЕЖНОЕ ИЗВЛЕЧЕНИЕ СООБЩЕНИЯ ---
-    message = update.message or update.edited_message or update.channel_post or update.edited_channel_post
-    if not message or not message.text:
-        logger.warning(f"Handler triggered for an update with no message text: {update}")
-        return
-    # --- КОНЕЦ БЛОКА ИЗВЛЕЧЕНИЯ ---
-
-    user_prompt = message.text
-    chat_id = message.chat_id
+async def about_you(update: Update, context: ContextTypes.DEFAULT_TYPE) -> int:
+    """Сбор информации о пользователе."""
+    context.user_data['about_you'] = update.message.text
+    await update.message.reply_text(
+        "👤 *Кто ваш клиент?* (Название компании, сфера деятельности, размер)",
+        parse_mode='Markdown'
+    )
+    return ABOUT_CLIENT
     
-    await context.bot.send_message(chat_id, "Принял. Думаю над предложением... 🤖")
 
-    # 1. Получаем текст от AI
-    try:
-        proposal_text = get_proposal_text(user_prompt)
-        # Заменяем переносы строк для корректного отображения в PDF
-        proposal_text_pdf = proposal_text.replace('\n', '<br/>')
-    except Exception as e:
-        logger.error(f"Ошибка в AI сервисе: {e}")
-        await context.bot.send_message(chat_id, f"Произошла ошибка при генерации текста: {e}")
-        return
+async def about_client(update: Update, context: ContextTypes.DEFAULT_TYPE) -> int:
+    """Сбор информации о клиенте."""
+    context.user_data['about_client'] = update.message.text
+    await update.message.reply_text(
+        "💼 *Суть задачи* (Что нужно сделать, какие сроки, бюджет если известен)",
+        parse_mode='Markdown'
+    )
+    return TASK_INFO
 
-    await context.bot.send_message(chat_id, "Текст готов. Создаю PDF... 📄")
 
-    # 2. Создаем PDF
+async def task_info(update: Update, context: ContextTypes.DEFAULT_TYPE) -> int:
+    """Сбор информации о задаче и генерация КП."""
+    context.user_data['task_info'] = update.message.text
+
+    # Формируем промпт из собранных данных
+    prompt = f"""
+Кто исполнитель: {context.user_data['about_you']}
+Кто клиент: {context.user_data['about_client']}
+Задача: {context.user_data['task_info']}
+"""
+    await update.message.reply_text("🤖 Думаю над коммерческим предложением...")
+
+    # Генерируем КП
+    proposal_text = get_proposal_text(prompt)
+    proposal_text_pdf = proposal_text.replace('\n', '<br/>')
+
+    await update.message.reply_text("📄 Создаю PDF...")
+
     try:
         pdf_bytes = create_proposal_pdf(proposal_text_pdf)
+        await update.message.reply_document(
+            document=pdf_bytes,
+            filename="Commercial_Proposal.pdf",
+            caption="✅ Ваше КП готово!\n\nХотите создать ещё одно? Нажмите /start"
+        )
     except Exception as e:
-        logger.error(f"Ошибка в PDF генераторе: {e}")
-        await context.bot.send_message(chat_id, f"Произошла ошибка при создании PDF: {e}")
-        return
+        logger.error(f"PDF error: {e}")
+        await update.message.reply_text(f"Ошибка создания PDF: {e}")
 
-    # 3. Отправляем PDF пользователю
-    await context.bot.send_document(
-        chat_id=chat_id,
-        document=pdf_bytes,
-        filename="Commercial_Proposal.pdf",
-        caption="Ваше коммерческое предложение готово!"
-    )
-    
-    await context.bot.send_message(
-        chat_id, 
-        "Вы можете отправить описание следующего проекта."
-    )
+    return ConversationHandler.END
+
+
+async def cancel(update: Update, context: ContextTypes.DEFAULT_TYPE) -> int:
+    """Отмена диалога."""
+    await update.message.reply_text("Отменено. Нажмите /start для начала.")
+    context.user_data.clear()
+    return ConversationHandler.END
+
+
+
 
 
 def main() -> None:
@@ -86,12 +109,21 @@ def main() -> None:
     # Создаем приложение
     application = Application.builder().token(TOKEN).build()
 
-    # Добавляем обработчики
-    application.add_handler(CommandHandler("start", start))
-    application.add_handler(MessageHandler(filters.TEXT & ~filters.COMMAND, generate_proposal))
+    # ConversationHandler для сбора данных в 3 этапа
+    conv_handler = ConversationHandler(
+        entry_points=[CommandHandler('start', start)],
+        states={
+            ABOUT_YOU: [MessageHandler(filters.TEXT & ~filters.COMMAND, about_you)],
+            ABOUT_CLIENT: [MessageHandler(filters.TEXT & ~filters.COMMAND, about_client)],
+            TASK_INFO: [MessageHandler(filters.TEXT & ~filters.COMMAND, task_info)],
+        },
+        fallbacks=[CommandHandler('cancel', cancel)],
+    )
+
+    application.add_handler(conv_handler)
+    application.add_handler(CommandHandler('cancel', cancel))
 
     logger.info("Бот запускается...")
-    # Запускаем бота
     application.run_polling()
 
 if __name__ == '__main__':
