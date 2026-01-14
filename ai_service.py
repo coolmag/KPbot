@@ -43,7 +43,8 @@ def _initialize_client():
     _client = openai.OpenAI(
         base_url="https://openrouter.ai/api/v1",
         api_key=api_key,
-        max_retries=3,
+        max_retries=5,
+        timeout=60.0,
         default_headers={
             "HTTP-Referer": "https://github.com",
             "X-Title": "AI Client Pilot",
@@ -62,6 +63,7 @@ def get_proposal_text(prompt_data):
 
     for model in FREE_MODELS:
         try:
+            print(f"Пробуем: {model}")
             response = client.chat.completions.create(
                 model=model,
                 messages=[
@@ -69,14 +71,17 @@ def get_proposal_text(prompt_data):
                     {"role": "user", "content": prompt_data}
                 ]
             )
+            print(f"✅ Успех: {model}")
             return response.choices[0].message.content.strip()
         except Exception as e:
             last_error = e
-            print(f"OpenRouter model {model} failed: {e}")
+            print(f"❌ Ошибка {model}: {type(e).__name__}")
             continue
 
+    print(f"💥 Все модели не работают. Последняя ошибка: {last_error}")
     return (f"⚠️ Все AI-сервисы временно недоступны.\n\n"
-            f"Попробуйте позже.\n\nТехническая информация: {last_error}")
+            f"Ошибка: {type(last_error).__name__}\n"
+            f"Попробуйте через несколько минут.")
 
 
 if __name__ == '__main__':
