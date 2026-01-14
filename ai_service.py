@@ -19,7 +19,6 @@ if USE_G4F:
         Provider.LambdaChat,
         Provider.You,
         Provider.bing,
-        Provider.GPTalk,
         Provider.DeepInfra,
     ]
 
