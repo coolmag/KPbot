@@ -2,4 +2,4 @@ python-telegram-bot
 httpx
 reportlab
 python-dotenv
-google-generativeai
+google-genai
