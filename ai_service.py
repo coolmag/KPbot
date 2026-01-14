@@ -7,7 +7,8 @@ logger = logging.getLogger(__name__)
 
 def get_proposal_text(prompt: str) -> str:
     """
-    Генерирует КП через Google Gemini (Modern SDK `google-genai`).
+    Генерирует КП через Google Gemini (Modern SDK). 
+    Использует стабильную модель gemini-1.5-pro.
     """
     api_key = os.getenv("GOOGLE_API_KEY")
     if not api_key:
@@ -15,7 +16,6 @@ def get_proposal_text(prompt: str) -> str:
         return "Ошибка: Отсутствует API ключ Google."
 
     try:
-        # В новом SDK мы создаем экземпляр клиента, а не конфигурируем глобально
         client = genai.Client(api_key=api_key)
         
         full_prompt = (
@@ -26,9 +26,9 @@ def get_proposal_text(prompt: str) -> str:
             f"пиши простым текстом, разделяя смысловые блоки пустыми строками."
         )
 
-        # Используем актуальную модель (в 2026 это может быть gemini-2.0, пока ставим gemini-1.5-flash как стабильную базу)
+        # FIX: Используем gemini-1.5-pro (Verified Stable) вместо flash
         response = client.models.generate_content(
-            model="gemini-1.5-flash", 
+            model="gemini-1.5-pro", 
             contents=full_prompt,
             config=types.GenerateContentConfig(
                 temperature=0.7,
@@ -41,7 +41,7 @@ def get_proposal_text(prompt: str) -> str:
         return response.text.strip()
 
     except Exception as e:
-        logger.error(f"Ошибка Google GenAI SDK: {e}", exc_info=True)
+        logger.error(f"❌ Ошибка Google GenAI SDK: {e}", exc_info=True)
         return (
             "Коммерческое предложение (Черновик)\n\n"
             "К сожалению, сервис генерации временно недоступен. "

@@ -8,13 +8,14 @@ logger = logging.getLogger(__name__)
 BASE_DIR = Path(__file__).parent.resolve()
 FONT_FILENAME = "DejaVuSans.ttf"
 FONT_PATH = BASE_DIR / FONT_FILENAME
-# Исправленная ссылка (папка ttf)
-FONT_URL = "https://github.com/dejavu-fonts/dejavu-fonts/raw/master/ttf/DejaVuSans.ttf"
+
+# FIX: Стабильная ссылка на конкретный релиз (version_2_37)
+FONT_URL = "https://raw.githubusercontent.com/dejavu-fonts/dejavu-fonts/version_2_37/ttf/DejaVuSans.ttf"
 
 def ensure_font_exists() -> str:
     """
     Проверяет наличие шрифта. Если его нет — скачивает.
-    Возвращает путь к шрифту.
+    Возвращает путь к шрифту или None (graceful degradation).
     """
     if FONT_PATH.exists():
         logger.info(f"✅ Шрифт найден: {FONT_PATH}")
@@ -33,4 +34,5 @@ def ensure_font_exists() -> str:
         return str(FONT_PATH)
     except Exception as e:
         logger.error(f"❌ Ошибка скачивания шрифта: {e}")
+        # Возвращаем None, чтобы pdf_generator использовал Helvetica и не крашил бота
         return None
