@@ -22,9 +22,11 @@ def _initialize_client():
     project_name = "ProposalBot"
     project_url = "https://github.com" # URL можно указать любой, это для заголовков
 
+    # УВЕЛИЧИВАЕМ КОЛИЧЕСТВО ПОПЫТОК СОЕДИНЕНИЯ ДО 5
     _client = openai.OpenAI(
         base_url="https://openrouter.ai/api/v1",
         api_key=api_key,
+        max_retries=5, # <-- Вот это изменение
         default_headers={
             "HTTP-Referer": project_url,
             "X-Title": project_name,
