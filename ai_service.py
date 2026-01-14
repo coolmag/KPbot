@@ -1,38 +1,49 @@
 import os
-import google.generativeai as genai
 import logging
+from google import genai
+from google.genai import types
 
 logger = logging.getLogger(__name__)
 
-
-def get_proposal_text(prompt):
-    """Генерирует КП через Google Gemini Pro."""
+def get_proposal_text(prompt: str) -> str:
+    """
+    Генерирует КП через Google Gemini (Modern SDK `google-genai`).
+    """
     api_key = os.getenv("GOOGLE_API_KEY")
     if not api_key:
-        logger.error("Нет GOOGLE_API_KEY")
-        return "Ошибка: нет ключа API."
+        logger.error("❌ GOOGLE_API_KEY не установлен.")
+        return "Ошибка: Отсутствует API ключ Google."
 
     try:
-        genai.configure(api_key=api_key)
-        model = genai.GenerativeModel('gemini-pro')
-
-        request_text = (
-            f"Ты — профессиональный помощник. Составь короткое коммерческое предложение "
+        # В новом SDK мы создаем экземпляр клиента, а не конфигурируем глобально
+        client = genai.Client(api_key=api_key)
+        
+        full_prompt = (
+            f"Ты — профессиональный бизнес-ассистент. Составь коммерческое предложение "
             f"на основе данных: {prompt}. "
-            f"Структура: Приветствие, Суть задачи, Решение, Призыв к действию. "
-            f"Не используй Markdown. Пиши просто."
+            f"Структура: Приветствие, Понимание задачи, Предлагаемое решение, Сроки и стоимость (примерные), Призыв к действию. "
+            f"Форматирование: Не используй Markdown (жирный, курсив, заголовки #), "
+            f"пиши простым текстом, разделяя смысловые блоки пустыми строками."
         )
 
-        response = model.generate_content(request_text)
+        # Используем актуальную модель (в 2026 это может быть gemini-2.0, пока ставим gemini-1.5-flash как стабильную базу)
+        response = client.models.generate_content(
+            model="gemini-1.5-flash", 
+            contents=full_prompt,
+            config=types.GenerateContentConfig(
+                temperature=0.7,
+            )
+        )
+        
+        if not response.text:
+            return "AI вернул пустой ответ."
+            
         return response.text.strip()
 
     except Exception as e:
-        logger.error(f"Ошибка Google AI: {e}")
+        logger.error(f"Ошибка Google GenAI SDK: {e}", exc_info=True)
         return (
             "Коммерческое предложение (Черновик)\n\n"
-            "Здравствуйте!\n"
-            "Спасибо за ваш запрос. Мы готовы взяться за ваш проект.\n"
-            "К сожалению, AI-модуль временно недоступен, "
-            "но мы свяжемся с вами лично для уточнения."
+            "К сожалению, сервис генерации временно недоступен. "
+            "Мы получили ваши вводные данные и свяжемся с вами лично."
         )
-

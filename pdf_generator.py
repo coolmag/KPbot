@@ -1,80 +1,89 @@
 from reportlab.lib.pagesizes import letter
-from reportlab.pdfgen import canvas
 from reportlab.lib.styles import getSampleStyleSheet, ParagraphStyle
 from reportlab.platypus import SimpleDocTemplate, Paragraph, Spacer
 from reportlab.pdfbase import pdfmetrics
 from reportlab.pdfbase.ttfonts import TTFont
 from io import BytesIO
-import os
+import logging
+from utils import ensure_font_exists
 
-def create_proposal_pdf(text_content):
+logger = logging.getLogger(__name__)
+
+def create_proposal_pdf(text_content: str) -> bytes:
     """
-    Создает PDF-документ с коммерческим предложением из текста.
-    Возвращает байтовый объект PDF.
+    Создает PDF-документ. Функция блокирующая (CPU-bound).
     """
     buffer = BytesIO()
-    doc = SimpleDocTemplate(buffer, pagesize=letter)
+    doc = SimpleDocTemplate(
+        buffer, 
+        pagesize=letter,
+        rightMargin=72, leftMargin=72, 
+        topMargin=72, bottomMargin=72
+    )
     
-    # 1. Регистрируем шрифт с поддержкой кириллицы
-    font_path = "DejaVuSans.ttf"
+    # Инициализация шрифта через утилиту
+    font_path = ensure_font_exists()
+    font_name = 'Helvetica' # Fallback по умолчанию
 
-    try:
-        if os.path.exists(font_path):
+    if font_path:
+        try:
             pdfmetrics.registerFont(TTFont('DejaVuSans', font_path))
             font_name = 'DejaVuSans'
-        else:
-            font_name = 'Helvetica'  # Fallback (кириллица не будет работать)
-            print(f"Warning: Font file {font_path} not found.")
-    except Exception as e:
-        font_name = 'Helvetica'
-        print(f"Font error: {e}")
+        except Exception as e:
+            logger.error(f"Не удалось зарегистрировать шрифт: {e}")
+    else:
+        logger.warning("Используется стандартный шрифт (кириллица может не отображаться).")
 
     styles = getSampleStyleSheet()
 
-    # 2. Создаем стиль с нашим шрифтом
-    cyrillic_style = ParagraphStyle(
-        'CyrillicStyle',
+    # Стили
+    normal_style = ParagraphStyle(
+        'CustomNormal',
         parent=styles['Normal'],
         fontName=font_name,
-        fontSize=12,
-        leading=16,
+        fontSize=11,
+        leading=15,
         spaceAfter=10
     )
 
     header_style = ParagraphStyle(
-        'HeaderStyle',
+        'CustomHeader',
         parent=styles['Heading1'],
         fontName=font_name,
-        fontSize=18,
+        fontSize=16,
         spaceAfter=20,
-        alignment=1  # Center
+        alignment=1, # Center
+        textColor='#2c3e50'
     )
 
     story = []
-
-    # Добавим заголовок
     story.append(Paragraph("Коммерческое предложение", header_style))
     story.append(Spacer(1, 12))
 
-    # Обработка текста
-    for line in text_content.split('<br/>'):
-        if line.strip():
-            story.append(Paragraph(line, cyrillic_style))
-        else:
-            story.append(Spacer(1, 6))
+    # Обработка переносов строк для ReportLab
+    # Заменяем \n на <br/>, так как ReportLab использует XML-подобную разметку
+    clean_text = text_content.replace('\n', '<br/>')
+    
+    story.append(Paragraph(clean_text, normal_style))
+    
+    # Добавляем футер
+    story.append(Spacer(1, 30))
+    footer_text = "Сгенерировано автоматически с помощью AI Client Pilot"
+    footer_style = ParagraphStyle(
+        'Footer', 
+        parent=normal_style, 
+        fontSize=8, 
+        textColor='gray', 
+        alignment=1
+    )
+    story.append(Paragraph(footer_text, footer_style))
 
-    doc.build(story)
+    try:
+        doc.build(story)
+    except Exception as e:
+        logger.error(f"Ошибка сборки PDF: {e}", exc_info=True)
+        return b""
     
     pdf_bytes = buffer.getvalue()
     buffer.close()
     return pdf_bytes
-
-
-if __name__ == '__main__':
-    # Пример для тестирования модуля
-    sample_text = "Коммерческое предложение<br/><br/>Уважаемый клиент,<br/><br/>Представляем вам наше предложение по услуге разработки Telegram-бота."
-    pdf_data = create_proposal_pdf(sample_text)
-    with open("sample_proposal.pdf", "wb") as f:
-        f.write(pdf_data)
-    print("Тестовый PDF 'sample_proposal.pdf' успешно создан.")
-
