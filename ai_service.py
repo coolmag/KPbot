@@ -1,131 +1,125 @@
-from openai import OpenAI
-from duckduckgo_search import DDGS
+from google import genai
+from google.genai import types
 import os
 import logging
 import json
 import time
-import requests
-import random
 import re
 
 logger = logging.getLogger(__name__)
 
-# --- ФУНКЦИИ ВЫБОРА МОДЕЛЕЙ И ПОИСКА ---
-def get_free_model_id(exclude_model=None) -> str:
-    try:
-        url = "https://openrouter.ai/api/v1/models"
-        response = requests.get(url)
-        if response.status_code == 200:
-            models_data = response.json().get('data', [])
-            good = ['deepseek', 'llama-3.3', 'gemini-2', '70b', 'mistral-large']
-            bad = ['1b', '3b', 'venice', 'liquid', 'chimera', 'vision'] 
-            candidates = []
-            for m in models_data:
-                mid = m['id'].lower()
-                if ':free' not in mid: continue
-                if any(b in mid for b in bad): continue
-                if mid == exclude_model: continue
-                if any(g in mid for g in good) or '8b' in mid:
-                    candidates.append(m['id'])
-            
-            if candidates:
-                top = [c for c in candidates if 'deepseek' in c or '70b' in c]
-                return random.choice(top) if top else random.choice(candidates)
-    except: pass
-    return "google/gemini-2.0-flash-exp:free"
-
-def search_prices(query: str) -> str:
-    try:
-        area_match = re.search(r'(\d+)\s*(кв|м2|метр)', query)
-        power_kw = "24"
-        if area_match:
-            area = int(area_match.group(1))
-            power_kw = str(int(area / 10 * 1.2))
-            logger.info(f"🧮 Дом {area}м2 -> {power_kw} кВт")
-        
-        search_q = f"цена газовый котел {power_kw} кВт Viessmann Buderus 2025"
-        logger.info(f"🔎 Гуглю: {search_q}")
-        
-        results = DDGS().text(search_q, max_results=4)
-        context = f"РЫНОЧНЫЕ ЦЕНЫ (Котел {power_kw} кВт):\n"
-        if results:
-            for res in results:
-                context += f"- {res['title']}: {res['body']}\n"
-        return context
-    except Exception: return "Цены: 150 000 руб."
-
 def clean_json_response(content: str) -> dict | None:
     try:
-        content = re.sub(r'<think>.*?</think>', '', content, flags=re.DOTALL)
+        # Чистим от маркдауна и лишнего текста
         content = content.replace("```json", "").replace("```", "").strip()
         start = content.find('{')
         end = content.rfind('}')
         if start != -1 and end != -1:
             return json.loads(content[start:end+1])
-    except: pass
+    except: 
+        pass
     return None
 
-# --- ОСНОВНАЯ ФУНКЦИЯ ---
 def get_proposal_json(prompt: str) -> dict:
-    api_key = os.getenv("OPENROUTER_API_KEY")
-    if not api_key: return _get_fallback_data("Нет ключа")
+    api_key = os.getenv("GOOGLE_API_KEY")
+    if not api_key: return _get_fallback_data("Нет ключа Google")
 
-    search_data = search_prices(prompt)
-    client = OpenAI(base_url="https://openrouter.ai/api/v1", api_key=api_key)
+    client = genai.Client(api_key=api_key)
     
-    role_instruction = (
-        "Ты — Главный инженер KOTEL.MSK.RU (30 лет опыта).\n"
-        "ТВОЯ ЗАДАЧА: Подобрать оборудование СТРОГО под площадь дома.\n"
-        "ПРАВИЛО МОЩНОСТИ: 1 кВт на 10 м2. Если дом 450 м2 — котел должен быть 50-60 кВт. "
-        "ПРАВИЛО ЦЕН: Бери цены из поиска. Если их нет — ставь рыночные."
+    # 1. Логика Инженера: Считаем мощность сами, раз Gemma не умеет гуглить
+    power_kw = "24"
+    price_boiler = "280 000" # Примерная цена мощного котла
+    
+    try:
+        area_match = re.search(r'(\d+)\s*(кв|м2|метр)', prompt)
+        if area_match:
+            area = int(area_match.group(1))
+            # Формула: 1 кВт на 10 м2 + 20%
+            calc_power = int(area / 10 * 1.2) 
+            # Округляем до стандартных мощностей
+            if calc_power > 40: power_kw = "60"
+            elif calc_power > 30: power_kw = "45"
+            elif calc_power > 24: power_kw = "35"
+            
+            logger.info(f"🧮 Дом {area}м2 -> Котел {power_kw} кВт")
+            
+            # Корректируем цену в зависимости от мощности
+            if power_kw == "60": price_boiler = "420 000"
+            elif power_kw == "45": price_boiler = "350 000"
+            elif power_kw == "35": price_boiler = "290 000"
+            else: price_boiler = "120 000" # 24 кВт
+    except: pass
+
+    # 2. Промпт (Вшиваем инструкции внутрь, так как Gemma не понимает system_instruction)
+    full_prompt = (
+        "Ты — Главный инженер KOTEL.MSK.RU. Твоя задача — составить JSON для сметы.\n"
+        f"ВВОДНЫЕ ДАННЫЕ: Дом клиента требует котла мощностью {power_kw} кВт.\n"
+        f"Ориентировочная цена такого котла (Buderus/Viessmann): {price_boiler} руб.\n\n"
+        "ИНСТРУКЦИЯ:\n"
+        "1. Составь описание решения на русском языке.\n"
+        "2. Исправь ошибки (напр. 'конвективы' -> 'конвекторы').\n"
+        "3. Верни ОТВЕТ ТОЛЬКО В ФОРМАТЕ JSON (без вступлений).\n\n"
+        "СХЕМА JSON:\n"
+        "{\n"
+        '  "title": "Название (например: Проект котельной ' + power_kw + ' кВт)",\n'
+        '  "executive_summary": "Описание...",\n'
+        '  "client_pain_points": ["..."],\n'
+        '  "solution_steps": [{"step_name": "...", "description": "..."}],\n'
+        '  "budget_items": [\n'
+        '     {"item": "Котел газовый ' + power_kw + ' кВт", "price": "' + price_boiler + ' руб.", "time": "5 дн."},
+'
+        '     {"item": "Бойлер косвенного нагрева", "price": "...", "time": "..."}
+'
+        '  ],\n'
+        '  "why_us": "...",\n'
+        '  "cta": "..."
+'
+        "}\n\n"
+        f"ЗАПРОС КЛИЕНТА: {prompt}"
     )
-    
-    # ВАЖНО: Схема JSON записана одной строкой для надежности
-    json_schema = '{"title": "Название (укажи мощность котла)", "executive_summary": "Описание...", "client_pain_points": ["..."], "solution_steps": [{"step_name": "...", "description": "..."}], "budget_items": [{"item": "Наименование (бренд, мощность)", "price": "X руб.", "time": "X дн."}], "why_us": "...", "cta": "..."}'
-    
-    final_prompt = f"ЗАПРОС: {prompt}\nНАЙДЕННЫЕ ЦЕНЫ: {search_data}\n\nВЕРНИ JSON (без Markdown):\n{json_schema}"
 
-    current_model = get_free_model_id()
+    # Используем Gemma 3 27B (у неё лимит 14k)
+    # Если она недоступна, пробуем Gemini 2.0 Flash
+    TARGET_MODELS = [
+        "gemma-3-27b-it",
+        "models/gemma-3-27b-it",
+        "gemini-2.0-flash-exp"
+    ]
 
-    for attempt in range(3):
+    for model_name in TARGET_MODELS:
         try:
-            logger.info(f"🧠 {current_model} генерирует...")
-            response = client.chat.completions.create(
-                model=current_model,
-                messages=[
-                    {"role": "system", "content": role_instruction},
-                    {"role": "user", "content": final_prompt}
-                ],
-                temperature=0.4,
-                extra_headers={"HTTP-Referer": "https://tg.me", "X-Title": "KP Bot"}
+            logger.info(f"⚡ Генерация через {model_name}...")
+            
+            response = client.models.generate_content(
+                model=model_name,
+                contents=full_prompt,
+                config=types.GenerateContentConfig(
+                    temperature=0.3
+                    # Убрали system_instruction и json mode, чтобы Gemma не падала
+                )
             )
             
-            content = ""
-            if hasattr(response, 'choices') and response.choices:
-                content = response.choices[0].message.content
-            elif isinstance(response, dict) and 'choices' in response:
-                content = response['choices'][0]['message']['content']
-            
-            data = clean_json_response(content)
-            
-            if data and "title" in data:
-                return data
+            if response.text:
+                data = clean_json_response(response.text)
+                if data and "title" in data:
+                    logger.info(f"✅ Успех ({model_name})!")
+                    return data
                 
         except Exception as e:
-            logger.warning(f"Error {current_model}: {e}")
-            time.sleep(1)
-            current_model = get_free_model_id(exclude_model=current_model)
+            logger.info(f"⚠️ Ошибка {model_name}: {e}")
+            if "429" in str(e): # Лимиты
+                time.sleep(2)
             continue
 
-    return _get_fallback_data("Ошибка")
+    return _get_fallback_data("Сбой генерации")
 
 def _get_fallback_data(reason: str) -> dict:
     return {
-        "title": "Черновик КП",
-        "executive_summary": "Ошибка генерации.",
+        "title": "Смета (Расчет инженером)",
+        "executive_summary": f"Ошибка AI: {reason}. Мы составим смету вручную.",
         "client_pain_points": [],
         "solution_steps": [],
-        "budget_items": [{"item": "Ошибка", "price": "-", "time": "-"}],
+        "budget_items": [{"item": "-", "price": "-", "time": "-"}],
         "why_us": "-",
         "cta": "-"
     }
