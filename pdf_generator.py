@@ -1,174 +1,253 @@
 from reportlab.lib import colors
 from reportlab.lib.pagesizes import A4
 from reportlab.lib.styles import getSampleStyleSheet, ParagraphStyle
-from reportlab.lib.units import cm
-from reportlab.platypus import SimpleDocTemplate, Paragraph, Spacer, Table, TableStyle, PageBreak
+from reportlab.lib.units import cm, mm
+from reportlab.platypus import SimpleDocTemplate, Paragraph, Spacer, Table, TableStyle, PageBreak, Frame, PageTemplate
 from reportlab.pdfbase import pdfmetrics
 from reportlab.pdfbase.ttfonts import TTFont
-from reportlab.lib.enums import TA_CENTER, TA_LEFT, TA_JUSTIFY
+from reportlab.lib.enums import TA_CENTER, TA_LEFT, TA_JUSTIFY, TA_RIGHT
+from reportlab.graphics.shapes import Drawing, Line
 from io import BytesIO
 import logging
+import datetime
 from utils import ensure_font_exists
 
 logger = logging.getLogger(__name__)
 
-# Цвета бренда
-COLOR_PRIMARY = colors.HexColor("#2C3E50") 
-COLOR_ACCENT = colors.HexColor("#E74C3C")  
-COLOR_BG_HEADER = colors.HexColor("#ECF0F1")
-COLOR_TEXT = colors.HexColor("#34495E")
+# --- LUXURY PALETTE ---
+COLOR_PRIMARY = colors.HexColor("#1A252F")  # Глубокий темно-синий (почти черный)
+COLOR_ACCENT = colors.HexColor("#C5A059")   # Матовое золото (не желтое, а благородное)
+COLOR_TEXT_MAIN = colors.HexColor("#2C3E50")
+COLOR_TEXT_LIGHT = colors.HexColor("#7F8C8D")
+COLOR_BG_LIGHT = colors.HexColor("#F9FAFB") # Очень светлый фон для блоков
 
-def add_watermark(canvas, doc):
-    """Рисует водяной знак и футер"""
+def register_fonts():
+    """Регистрирует шрифты. Если нет Bold версии, используем Regular."""
+    font_path = ensure_font_exists()
+    if font_path:
+        try:
+            pdfmetrics.registerFont(TTFont('AppFont', font_path))
+            return 'AppFont'
+        except Exception as e:
+            logger.error(f"Font Error: {e}")
+    return 'Helvetica'
+
+def on_page(canvas, doc):
+    """Отрисовка фона и декоративных элементов на каждой странице"""
     canvas.saveState()
     
-    # Водяной знак
-    canvas.setFont("Helvetica-Bold", 60)
-    canvas.setFillColor(colors.grey, alpha=0.1)
-    canvas.translate(10*cm, 15*cm)
+    # 1. Золотая линия сверху
+    canvas.setStrokeColor(COLOR_ACCENT)
+    canvas.setLineWidth(2)
+    canvas.line(0, A4[1] - 0.5*cm, A4[0], A4[1] - 0.5*cm)
+
+    # 2. Водяной знак (ОЧЕНЬ прозрачный и стильный)
+    canvas.setFont('AppFont', 50)
+    canvas.setFillColor(colors.HexColor("#000000"), alpha=0.03) # 3% прозрачности
+    canvas.translate(A4[0]/2, A4[1]/2)
     canvas.rotate(45)
     canvas.drawCentredString(0, 0, "KOTEL.MSK.RU")
     
     canvas.restoreState()
     
-    # Футер
+    # 3. Футер (Номер страницы и копирайт)
     canvas.saveState()
-    canvas.setFont("Helvetica", 9)
-    canvas.setFillColor(colors.HexColor("#7F8C8D"))
-    footer_text = "Профессиональный монтаж отопления | KOTEL.MSK.RU"
-    canvas.drawCentredString(A4[0]/2, 1*cm, footer_text)
+    canvas.setFont('AppFont', 8)
+    canvas.setFillColor(COLOR_TEXT_LIGHT)
+    
+    page_num = f"Страница {doc.page}"
+    canvas.drawRightString(A4[0] - 2*cm, 1*cm, page_num)
+    
+    # Ссылка слева
+    canvas.setFillColor(COLOR_PRIMARY)
+    canvas.drawString(2*cm, 1*cm, "KOTEL.MSK.RU | Инженерные системы")
     canvas.restoreState()
+
+def create_cover_page(story, styles, font_name, data):
+    """Создает премиальную обложку"""
+    story.append(Spacer(1, 4*cm))
+    
+    # Логотип (текстовый, раз нет картинки)
+    style_logo = ParagraphStyle(
+        'Logo', parent=styles['Normal'], fontName=font_name, 
+        fontSize=32, textColor=COLOR_PRIMARY, alignment=TA_CENTER, leading=40
+    )
+    story.append(Paragraph("<b>KOTEL.MSK.RU</b>", style_logo))
+    
+    # Декоративная линия
+    story.append(Spacer(1, 0.5*cm))
+    story.append(Paragraph(f'<font color="{COLOR_ACCENT.hexval()}">▬▬▬▬▬▬▬▬▬▬▬▬▬▬</font>', style_logo))
+    story.append(Spacer(1, 3*cm))
+    
+    # Название КП
+    style_cover_title = ParagraphStyle(
+        'CoverTitle', parent=styles['Normal'], fontName=font_name,
+        fontSize=24, textColor=COLOR_PRIMARY, alignment=TA_CENTER, leading=32
+    )
+    story.append(Paragraph(data.get('title', 'Коммерческое Предложение'), style_cover_title))
+    
+    story.append(Spacer(1, 1*cm))
+    
+    # Дата и инфо
+    style_meta = ParagraphStyle(
+        'CoverMeta', parent=styles['Normal'], fontName=font_name,
+        fontSize=12, textColor=COLOR_TEXT_LIGHT, alignment=TA_CENTER
+    )
+    date_str = datetime.datetime.now().strftime("%d.%m.%Y")
+    story.append(Paragraph(f"Дата формирования: {date_str}", style_meta))
+    story.append(Paragraph("Статус: Индивидуальный проект", style_meta))
+    
+    story.append(PageBreak())
 
 def create_proposal_pdf(data: dict) -> bytes:
     buffer = BytesIO()
+    
+    # Отступы стали больше для "воздуха"
     doc = SimpleDocTemplate(
-        buffer,
-        pagesize=A4,
-        rightMargin=2*cm, leftMargin=2*cm,
-        topMargin=2*cm, bottomMargin=2*cm
+        buffer, pagesize=A4,
+        rightMargin=2.5*cm, leftMargin=2.5*cm,
+        topMargin=2.5*cm, bottomMargin=2.5*cm
     )
 
-    # 1. Шрифты
-    font_path = ensure_font_exists()
-    font_regular = "Helvetica"
-    
-    if font_path:
-        try:
-            pdfmetrics.registerFont(TTFont('CustomFont', font_path))
-            font_regular = 'CustomFont'
-        except Exception as e:
-            logger.error(f"Ошибка шрифта: {e}")
-
-    # 2. Стили
+    font_name = register_fonts()
     styles = getSampleStyleSheet()
-    
-    style_title = ParagraphStyle(
-        'MainTitle', parent=styles['Heading1'], fontName=font_regular,
-        fontSize=24, leading=30, alignment=TA_CENTER, textColor=COLOR_PRIMARY, spaceAfter=30
-    )
-    
-    style_h2 = ParagraphStyle(
-        'H2', parent=styles['Heading2'], fontName=font_regular,
-        fontSize=16, leading=20, textColor=COLOR_ACCENT, spaceBefore=15, spaceAfter=10
-    )
 
+    # --- СТИЛИ ---
+    # Заголовки разделов
+    style_h1 = ParagraphStyle(
+        'LuxuryH1', parent=styles['Heading1'], fontName=font_name,
+        fontSize=18, textColor=COLOR_PRIMARY, spaceBefore=20, spaceAfter=10,
+        borderPadding=10, borderColor=COLOR_ACCENT, borderWidth=0,
+        backColor=None # Можно включить фон
+    )
+    
+    # Обычный текст
     style_body = ParagraphStyle(
-        'Body', parent=styles['Normal'], fontName=font_regular,
-        fontSize=11, leading=15, alignment=TA_JUSTIFY, textColor=COLOR_TEXT
-    )
-    
-    style_link = ParagraphStyle(
-        'Link', parent=style_body, textColor=colors.blue, alignment=TA_CENTER
+        'LuxuryBody', parent=styles['Normal'], fontName=font_name,
+        fontSize=11, leading=16, textColor=COLOR_TEXT_MAIN, alignment=TA_JUSTIFY,
+        spaceAfter=10
     )
 
-    elements = []
+    # Цитата / Важное (для Executive Summary)
+    style_quote = ParagraphStyle(
+        'Quote', parent=style_body,
+        backColor=COLOR_BG_LIGHT, borderPadding=15,
+        borderWidth=0, borderRadius=5,
+        leftIndent=10, rightIndent=10,
+        textColor=COLOR_PRIMARY
+    )
 
-    # Контент
-    elements.append(Spacer(1, 1*cm))
-    elements.append(Paragraph(data.get('title', 'КОММЕРЧЕСКОЕ ПРЕДЛОЖЕНИЕ'), style_title))
-    
-    link = '<a href="https://kotel.msk.ru" color="blue"><u>https://kotel.msk.ru</u></a>'
-    elements.append(Paragraph(link, style_link))
-    elements.append(Spacer(1, 1*cm))
-    
-    # Суть
+    story = []
+
+    # 1. ОБЛОЖКА
+    create_cover_page(story, styles, font_name, data)
+
+    # 2. Executive Summary (Суть)
     summary = data.get('executive_summary', '')
     if summary:
-        t = Table([[Paragraph(summary, style_body)]], colWidths=[16*cm])
-        t.setStyle(TableStyle([
-            ('BACKGROUND', (0,0), (-1,-1), COLOR_BG_HEADER),
-            ('BOX', (0,0), (-1,-1), 1, COLOR_PRIMARY),
-            ('PADDING', (0,0), (-1,-1), 15),
-        ]))
-        elements.append(t)
-    
-    elements.append(Spacer(1, 1*cm))
+        story.append(Paragraph("О ПРОЕКТЕ", style_h1))
+        # Золотая линия под заголовком
+        story.append(Spacer(1, 2))
+        
+        story.append(Paragraph(f"<i>{summary}</i>", style_quote))
+        story.append(Spacer(1, 1*cm))
 
-    # Боли
+    # 3. Боли (Client Pain Points)
     pain = data.get('client_pain_points', [])
     if pain:
-        elements.append(Paragraph("🎯 Задачи", style_h2))
+        story.append(Paragraph("ЗАДАЧИ И РИСКИ", style_h1))
         for p in pain:
-            elements.append(Paragraph(f"• {p}", style_body))
-    
-    elements.append(Spacer(1, 0.5*cm))
+            # Используем красивые галочки вместо точек
+            story.append(Paragraph(f"<font color={COLOR_ACCENT.hexval()}>✔</font> {p}", style_body))
+        story.append(Spacer(1, 0.5*cm))
 
-    # Решение
+    # 4. Решение
     steps = data.get('solution_steps', [])
     if steps:
-        elements.append(Paragraph("🚀 Решение", style_h2))
+        story.append(Paragraph("ТЕХНИЧЕСКОЕ РЕШЕНИЕ", style_h1))
         for i, s in enumerate(steps, 1):
             name = s.get('step_name', '')
             desc = s.get('description', '')
-            elements.append(Paragraph(f"<b>{i}. {name}</b>", style_body))
-            elements.append(Paragraph(desc, style_body))
-            elements.append(Spacer(1, 0.2*cm))
+            # Заголовок шага жирным и синим
+            story.append(Paragraph(f"<font color={COLOR_PRIMARY.hexval()}><b>{i:02d}. {name}</b></font>", style_body))
+            story.append(Paragraph(desc, style_body))
+            story.append(Spacer(1, 0.3*cm))
 
-    elements.append(PageBreak())
+    story.append(PageBreak())
 
-    # Смета
+    # 5. Смета (Luxury Table)
     budget = data.get('budget_items', [])
     if budget:
-        elements.append(Paragraph("💰 Смета (Ориентировочно)", style_h2))
-        table_data = [["Услуга", "Срок", "Стоимость"]]
+        story.append(Paragraph("ИНВЕСТИЦИОННЫЙ РАСЧЕТ", style_h1))
+        story.append(Spacer(1, 0.5*cm))
+
+        table_data = [["НАИМЕНОВАНИЕ УСЛУГИ / ОБОРУДОВАНИЯ", "СРОК", "СТОИМОСТЬ"]]
         for item in budget:
             table_data.append([
                 Paragraph(item.get('item', ''), style_body),
-                Paragraph(item.get('time', '-'), style_body), # Обернул в Paragraph, чтобы шрифт работал
-                Paragraph(item.get('price', '-'), style_body) # Обернул в Paragraph
+                Paragraph(item.get('time', '-'), style_body),
+                Paragraph(f"<b>{item.get('price', '-')}</b>", style_body) # Цена жирным
             ])
-            
-        t = Table(table_data, colWidths=[9*cm, 3.5*cm, 4.5*cm])
+
+        # Настройка таблицы (Modern Clean Style)
+        t = Table(table_data, colWidths=[10*cm, 2.5*cm, 3.5*cm])
         
-        # --- ИСПРАВЛЕНИЕ ЗДЕСЬ ---
         t.setStyle(TableStyle([
+            # Шрифты
+            ('FONTNAME', (0,0), (-1,-1), font_name),
+            
+            # Шапка
             ('BACKGROUND', (0,0), (-1,0), COLOR_PRIMARY),
             ('TEXTCOLOR', (0,0), (-1,0), colors.white),
+            ('BOTTOMPADDING', (0,0), (-1,0), 12),
+            ('TOPPADDING', (0,0), (-1,0), 12),
             
-            # Было: ('FONTNAME', (0,0), (-1,0), font_regular) -> Только шапка
-            # Стало: (-1,-1) -> Вся таблица
-            ('FONTNAME', (0,0), (-1,-1), font_regular), 
-            
-            ('GRID', (0,0), (-1,-1), 0.5, colors.grey),
-            ('ROWBACKGROUNDS', (0,1), (-1,-1), [colors.white, COLOR_BG_HEADER]),
+            # Тело таблицы
             ('VALIGN', (0,0), (-1,-1), 'TOP'),
+            ('BOTTOMPADDING', (0,1), (-1,-1), 10),
+            ('TOPPADDING', (0,1), (-1,-1), 10),
+            
+            # Линии (Только горизонтальные!)
+            ('LINEBELOW', (0,0), (-1,0), 2, COLOR_ACCENT), # Золотая линия под шапкой
+            ('LINEBELOW', (0,1), (-1,-1), 0.5, colors.HexColor("#E0E0E0")), # Тонкие серые линии
+            
+            # Убираем вертикальные линии для "воздуха"
+            ('BOX', (0,0), (-1,-1), 0, colors.white), 
         ]))
-        elements.append(t)
+        story.append(t)
+        
+        # Примечание под таблицей
+        story.append(Spacer(1, 0.5*cm))
+        story.append(Paragraph("* Цены указаны ориентировочно и могут быть скорректированы после выезда инженера.", 
+                               ParagraphStyle('Note', parent=style_body, fontSize=8, textColor=COLOR_TEXT_LIGHT)))
 
-    elements.append(Spacer(1, 1*cm))
+    # 6. Почему мы & CTA
+    story.append(Spacer(1, 1*cm))
+    why_us = data.get('why_us')
+    if why_us:
+        # Выделяем блок "Почему мы" рамкой
+        story.append(Paragraph("ПОЧЕМУ ВЫБИРАЮТ НАС", style_h1))
+        story.append(Paragraph(why_us, style_body))
+
+    story.append(Spacer(1, 1.5*cm))
     
-    # CTA
     cta = data.get('cta')
     if cta:
-        elements.append(Paragraph(f"<b>{cta}</b>", style_body))
-        elements.append(Spacer(1, 0.5*cm))
-        elements.append(Paragraph("Заявки на сайте: " + link, style_body))
+        # CTA как кнопка
+        style_cta = ParagraphStyle(
+            'CTA', parent=style_body,
+            fontSize=12, textColor=COLOR_PRIMARY, alignment=TA_CENTER,
+            borderWidth=1, borderColor=COLOR_ACCENT, borderPadding=10,
+            borderRadius=5
+        )
+        story.append(Paragraph(f"<b>{cta}</b>", style_cta))
+        
+        link = '<a href="https://kotel.msk.ru" color="#C5A059"><u>ОСТАВИТЬ ЗАЯВКУ НА САЙТЕ</u></a>'
+        story.append(Spacer(1, 0.5*cm))
+        story.append(Paragraph(link, ParagraphStyle('Link', parent=style_body, alignment=TA_CENTER)))
 
-    try:
-        doc.build(elements, onFirstPage=add_watermark, onLaterPages=add_watermark)
-    except Exception as e:
-        logger.error(f"PDF Error: {e}")
-        return b""
-
+    # Генерация
+    doc.build(story, onFirstPage=on_page, onLaterPages=on_page)
+    
     buffer.seek(0)
     return buffer.getvalue()
