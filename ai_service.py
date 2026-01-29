@@ -3,22 +3,21 @@ from google.genai import types
 import os
 import logging
 import json
-import re
 import time
 import random
 
 logger = logging.getLogger(__name__)
 
-# Схема ответа, которую мы требуем от ИИ
+# Схема остается прежней — она отличная
 PROPOSAL_SCHEMA = {
     "type": "OBJECT",
     "properties": {
         "title": {"type": "STRING", "description": "Цепляющий заголовок КП"},
-        "executive_summary": {"type": "STRING", "description": "Краткая суть предложения (2-3 предложения)"},
+        "executive_summary": {"type": "STRING", "description": "Суть предложения (2-3 предложения)"},
         "client_pain_points": {
             "type": "ARRAY",
             "items": {"type": "STRING"},
-            "description": "Список из 3-4 болей клиента, которые мы решаем"
+            "description": "3-4 боли клиента"
         },
         "solution_steps": {
             "type": "ARRAY",
@@ -36,73 +35,100 @@ PROPOSAL_SCHEMA = {
             "items": {
                 "type": "OBJECT",
                 "properties": {
-                    "item": {"type": "STRING", "description": "Название услуги"},
-                    "price": {"type": "STRING", "description": "Стоимость (например '50 000 руб')"},
-                    "time": {"type": "STRING", "description": "Срок (например '2 дня')"}
+                    "item": {"type": "STRING", "description": "Услуга"},
+                    "price": {"type": "STRING", "description": "Цена"},
+                    "time": {"type": "STRING", "description": "Срок"}
                 }
             }
         },
-        "why_us": {"type": "STRING", "description": "Блок 'Почему мы'"},
-        "cta": {"type": "STRING", "description": "Призыв к действию (Call to Action)"}
+        "why_us": {"type": "STRING", "description": "Почему мы"},
+        "cta": {"type": "STRING", "description": "Призыв к действию"}
     },
     "required": ["title", "executive_summary", "solution_steps", "budget_items", "cta"]
 }
 
-
 def get_proposal_json(prompt: str) -> dict:
+    """
+    Генерирует JSON через Gemini 1.5 Flash с системой повторных попыток (Retries).
+    """
     api_key = os.getenv("GOOGLE_API_KEY")
     if not api_key:
         logger.error("❌ GOOGLE_API_KEY не найден.")
-        return None
+        return _get_fallback_data("Ошибка конфигурации API Key")
 
     client = genai.Client(api_key=api_key)
     
     system_instruction = (
-        "Ты — топовый эксперт по B2B продажам. Твоя цель — составить структуру "
-        "убойного Коммерческого Предложения. Пиши уверенно, без воды. "
-        "Цены придумывай реалистичные, если не указаны."
+        "Ты — опытный коммерческий директор. Твоя задача — создать структуру КП "
+        "в формате JSON. Будь краток, убедителен и используй деловой стиль. "
+        "Если цены не указаны, предложи реалистичные рыночные оценки."
     )
 
-    # --- НАЧАЛО ИЗМЕНЕНИЙ: Блок повторных попыток ---
-    max_retries = 3
-    base_delay = 5 # секунд
-    
-    for attempt in range(max_retries):
+    # --- НАСТРОЙКИ СТАБИЛЬНОСТИ ---
+    # Используем 1.5-flash — она самая стабильная для Free Tier
+    MODEL_NAME = "gemini-1.5-flash" 
+    MAX_RETRIES = 3
+    BASE_DELAY = 4 # секунды
+
+    for attempt in range(MAX_RETRIES):
         try:
+            # logger.info(f"🤖 Запрос к AI (Попытка {attempt+1}/{MAX_RETRIES})...")
+            
             response = client.models.generate_content(
-                model="gemini-2.0-flash", 
+                model=MODEL_NAME,
                 contents=prompt,
                 config=types.GenerateContentConfig(
                     system_instruction=system_instruction,
                     response_mime_type="application/json",
-                    response_schema=PROPOSAL_SCHEMA
+                    response_schema=PROPOSAL_SCHEMA,
+                    # Температура поменьше для стабильности JSON
+                    temperature=0.7, 
                 )
             )
             
-            # Если успех — сразу возвращаем
+            if not response.text:
+                raise ValueError("Пустой ответ от API")
+
             data = json.loads(response.text)
-            logger.info("✅ JSON от Gemini успешно получен.")
+            logger.info("✅ JSON успешно сгенерирован.")
             return data
 
         except Exception as e:
-            # Проверяем, если это ошибка лимитов (429)
-            if "429" in str(e) or "RESOURCE_EXHAUSTED" in str(e):
-                wait_time = base_delay * (2 ** attempt) + random.uniform(0, 1)
-                logger.warning(f"⚠️ Лимит API (429). Жду {wait_time:.1f} сек... (Попытка {attempt+1}/{max_retries})")
+            error_msg = str(e)
+            
+            # Ловим ошибки лимитов (429)
+            if "429" in error_msg or "RESOURCE_EXHAUSTED" in error_msg:
+                # Экспоненциальная задержка: 4с -> 8с -> 16с + случайная добавка
+                wait_time = BASE_DELAY * (2 ** attempt) + random.uniform(0.5, 2.0)
+                logger.warning(f"⏳ Превышен лимит (429). Жду {wait_time:.1f} сек...")
                 time.sleep(wait_time)
+            
+            # Ловим ошибки перегрузки серверов Google (500, 503)
+            elif "500" in error_msg or "503" in error_msg:
+                wait_time = 5
+                logger.warning(f"⏳ Сервер Google перегружен. Жду {wait_time} сек...")
+                time.sleep(wait_time)
+                
             else:
-                # Если ошибка другая (не лимиты) — выходим сразу
-                logger.error(f"❌ Критическая ошибка AI: {e}")
+                logger.error(f"❌ Непредвиденная ошибка AI: {e}")
+                # Если ошибка не в лимитах (например, плохой промпт), нет смысла повторять
                 break
-    # --- КОНЕЦ ИЗМЕНЕНИЙ ---
 
-    # Если все попытки исчерпаны, возвращаем заглушку
-    logger.error("❌ Все попытки исчерпаны. Возвращаю заглушку.")
+    logger.error("❌ Все попытки исчерпаны. Отдаем заглушку.")
+    return _get_fallback_data("Сервис перегружен. Попробуйте позже.")
+
+def _get_fallback_data(reason: str) -> dict:
+    """Возвращает заглушку, чтобы PDF генератор не ломался."""
     return {
-        "title": "Сервис перегружен",
-        "executive_summary": "Извините, нейросеть сейчас испытывает высокую нагрузку. Попробуйте через минуту.",
-        "client_pain_points": ["Лимиты API Google", "Высокая нагрузка"],
-        "solution_steps": [],
-        "budget_items": [{"item": "Ожидание слота", "price": "0", "time": "∞"}],
-        "cta": "Нажмите /start снова"
+        "title": "Коммерческое Предложение (Черновик)",
+        "executive_summary": f"Не удалось сгенерировать полный текст с помощью ИИ. Причина: {reason}",
+        "client_pain_points": ["Техническая заминка", "Высокая нагрузка на сеть"],
+        "solution_steps": [
+            {"step_name": "Связаться с менеджером", "description": "Мы обсудим детали лично."}
+        ],
+        "budget_items": [
+            {"item": "Консультация", "price": "Бесплатно", "time": "Сейчас"}
+        ],
+        "why_us": "Мы всегда на связи, даже когда роботы устали.",
+        "cta": "Напишите нам в ЛС"
     }
