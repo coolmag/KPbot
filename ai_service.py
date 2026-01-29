@@ -1,88 +1,110 @@
-import google.generativeai as genai
+from openai import OpenAI
+from duckduckgo_search import DDGS
 import os
 import logging
 import json
 import time
-import random
 
 logger = logging.getLogger(__name__)
 
-# Настраиваем API один раз
-api_key = os.getenv("GOOGLE_API_KEY")
-if api_key:
-    genai.configure(api_key=api_key)
+# Список моделей (Solar Pro 3 и Llama отлично умеют работать с контекстом)
+FREE_MODELS = [
+    "upstage/solar-pro-3-preview:free",
+    "meta-llama/llama-3.3-70b-instruct:free",
+    "liquid/lfm-2.5-1.2b:free",
+]
+
+def search_prices(query: str) -> str:
+    """
+    Ищет актуальные цены и информацию в DuckDuckGo.
+    """
+    try:
+        logger.info(f"🔎 Ищу в DuckDuckGo: {query}...")
+        results = DDGS().text(query, max_results=4)
+        if not results:
+            return "Нет данных из интернета."
+            
+        search_context = "Найденная информация из интернета:\n"
+        for res in results:
+            search_context += f"- {res['title']}: {res['body']}\n"
+            
+        return search_context
+    except Exception as e:
+        logger.error(f"⚠️ Ошибка поиска: {e}")
+        return "Ошибка поиска данных."
 
 def get_proposal_json(prompt: str) -> dict:
+    api_key = os.getenv("OPENROUTER_API_KEY")
     if not api_key:
-        logger.error("❌ GOOGLE_API_KEY не найден.")
-        return _get_fallback_data("Нет ключа")
+        logger.error("❌ OPENROUTER_API_KEY не найден!")
+        return _get_fallback_data("Нет ключа API")
 
-    # Используем 'gemini-pro' - это алиас, который Google обычно держит живым
-    # Если он умрет, попробуем 'gemini-1.5-flash-latest'
-    models_to_try = [
-        "gemini-1.5-flash",
-        "gemini-1.5-flash-latest",
-        "gemini-pro",
-        "models/gemini-1.5-flash"
-    ]
+    # 1. Сначала ищем информацию в интернете!
+    # Вытаскиваем суть запроса из промпта (это грубо, но сработает)
+    # Промпт обычно содержит "Задача: Строим котельную..."
+    # Мы просто поищем по всему тексту задачи.
+    search_query = f"цена стоимость {prompt[-100:]}" # Берем последние 100 символов (сама задача)
+    search_data = search_prices(search_query)
+    
+    logger.info("🧠 Данные найдены, отправляю в ИИ...")
 
-    system_instruction = (
-        "Ты — бизнес-ассистент. Твоя задача — вернуть JSON структуру КП. "
-        "НЕ используй Markdown. "
-        "Формат: {title, executive_summary, client_pain_points[], solution_steps[], budget_items[], why_us, cta}."
+    client = OpenAI(
+        base_url="https://openrouter.ai/api/v1",
+        api_key=api_key,
     )
     
-    # Объединяем системный промпт и пользовательский, так как в старом API
-    # system_instruction не всегда поддерживается корректно
-    full_prompt = f"{system_instruction}\n\nЗАДАЧА:\n{prompt}\n\nJSON:"
+    # 2. Формируем умный промпт с контекстом
+    final_prompt = (
+        f"ЗАДАЧА ПОЛЬЗОВАТЕЛЯ:\n{prompt}\n\n"
+        f"{search_data}\n\n" # <--- Вставляем найденные цены!
+        "ИНСТРУКЦИЯ:\n"
+        "Используя найденную информацию (если она полезна), составь КП в формате JSON. "
+        "Если точных цен нет, дай экспертную оценку на основе данных. "
+        "Структура JSON: {title, executive_summary, client_pain_points, solution_steps, budget_items, why_us, cta}."
+    )
 
-    for model_name in models_to_try:
+    system_instruction = "Ты — эксперт по продажам. Отвечай ТОЛЬКО валидным JSON."
+
+    for model in FREE_MODELS:
         try:
-            logger.info(f"🔄 Пробую Google (v0.8.3): {model_name}...")
-            
-            model = genai.GenerativeModel(model_name)
-            
-            # generation_config для JSON
-            response = model.generate_content(
-                full_prompt,
-                generation_config=genai.types.GenerationConfig(
-                    temperature=0.7,
-                    response_mime_type="application/json" # Пытаемся форсировать JSON
-                )
+            response = client.chat.completions.create(
+                model=model,
+                messages=[
+                    {"role": "system", "content": system_instruction},
+                    {"role": "user", "content": final_prompt}
+                ],
+                temperature=0.7,
+                extra_headers={"HTTP-Referer": "https://tg.me", "X-Title": "KP Bot"}
             )
             
-            if not response.text:
-                raise ValueError("Пустой ответ")
+            content = response.choices[0].message.content
+            if not content: continue
 
-            # Чистим
-            clean_text = response.text.replace("```json", "").replace("```", "").strip()
-            data = json.loads(clean_text)
+            # Очистка JSON
+            clean_json = content.replace("```json", "").replace("```", "").strip()
+            start = clean_json.find('{')
+            end = clean_json.rfind('}')
+            if start != -1 and end != -1:
+                clean_json = clean_json[start:end+1]
             
-            if "title" not in data:
-                continue
-
-            logger.info(f"✅ Успех! {model_name} сработала.")
-            return data
+            data = json.loads(clean_json)
+            if "title" in data:
+                logger.info(f"✅ Успех! {model} справилась.")
+                return data
 
         except Exception as e:
-            if "429" in str(e):
-                logger.warning(f"⏳ 429 на {model_name}. Жду 5 сек...")
-                time.sleep(5)
-            elif "404" in str(e):
-                logger.warning(f"🚫 {model_name} не найдена.")
-            else:
-                logger.warning(f"⚠️ Ошибка {model_name}: {e}")
+            logger.warning(f"⚠️ Ошибка {model}: {e}")
             continue
 
-    return _get_fallback_data("Google API недоступен")
+    return _get_fallback_data("ИИ недоступен")
 
 def _get_fallback_data(reason: str) -> dict:
     return {
-        "title": "Черновик КП (Сбой сети)",
-        "executive_summary": f"Не удалось связаться с AI ({reason}).",
-        "client_pain_points": ["Ошибка соединения"],
+        "title": "Черновик КП",
+        "executive_summary": "Не удалось сгенерировать КП.",
+        "client_pain_points": [],
         "solution_steps": [],
-        "budget_items": [{"item": "-", "price": "-", "time": "-"}],
+        "budget_items": [],
         "why_us": "-",
-        "cta": "Повторите позже"
+        "cta": "-"
     }
