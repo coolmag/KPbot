@@ -35,14 +35,13 @@ def get_free_model_id(exclude_model=None) -> str:
     return "google/gemini-2.0-flash-exp:free"
 
 def search_prices(query: str) -> str:
-    """Ищет цены под конкретную мощность"""
     try:
         area_match = re.search(r'(\d+)\s*(кв|м2|метр)', query)
         power_kw = "24"
         if area_match:
             area = int(area_match.group(1))
             power_kw = str(int(area / 10 * 1.2))
-            logger.info(f"🧮 Дом {area}м2 -> Котел {power_kw} кВт")
+            logger.info(f"🧮 Дом {area}м2 -> {power_kw} кВт")
         
         search_q = f"цена газовый котел {power_kw} кВт Viessmann Buderus 2025"
         logger.info(f"🔎 Гуглю: {search_q}")
@@ -71,9 +70,7 @@ def get_proposal_json(prompt: str) -> dict:
     api_key = os.getenv("OPENROUTER_API_KEY")
     if not api_key: return _get_fallback_data("Нет ключа")
 
-    # 1. Сначала считаем мощность и ищем цену
     search_data = search_prices(prompt)
-    
     client = OpenAI(base_url="https://openrouter.ai/api/v1", api_key=api_key)
     
     role_instruction = (
@@ -83,22 +80,10 @@ def get_proposal_json(prompt: str) -> dict:
         "ПРАВИЛО ЦЕН: Бери цены из поиска. Если их нет — ставь рыночные."
     )
     
-    # Склеиваем промпт безопасно (без f-строк с тройными кавычками)
-    final_prompt = (
-        "ЗАПРОС: " + prompt + "\n" +
-        "НАЙДЕННЫЕ ЦЕНЫ: " + search_data + "\n\n" +
-        "ВЕРНИ JSON (без Markdown):\n" +
-        "{\n" +
-        '  "title": "Название (укажи мощность котла)",\n' +
-        '  "executive_summary": "Описание...",\n' +
-        '  "client_pain_points": ["..."],\n' +
-        '  "solution_steps": [{"step_name": "...", "description": "..."}],\n' +
-        '  "budget_items": [{"item": "Наименование (бренд, мощность)", "price": "X руб.", "time": "X дн."}],
-' +
-        '  "why_us": "...",\n' +
-        '  "cta": "..."\n' +
-        "}"
-    )
+    # ВАЖНО: Схема JSON записана одной строкой для надежности
+    json_schema = '{"title": "Название (укажи мощность котла)", "executive_summary": "Описание...", "client_pain_points": ["..."], "solution_steps": [{"step_name": "...", "description": "..."}], "budget_items": [{"item": "Наименование (бренд, мощность)", "price": "X руб.", "time": "X дн."}], "why_us": "...", "cta": "..."}'
+    
+    final_prompt = f"ЗАПРОС: {prompt}\nНАЙДЕННЫЕ ЦЕНЫ: {search_data}\n\nВЕРНИ JSON (без Markdown):\n{json_schema}"
 
     current_model = get_free_model_id()
 
