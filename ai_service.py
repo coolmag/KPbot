@@ -80,20 +80,25 @@ def get_proposal_json(prompt: str) -> dict:
     if not api_key: return _get_fallback_data("Нет ключа")
 
     search_data = search_prices(prompt)
+    client = OpenAI(base_url="https://openrouter.ai/api/v1", api_key=api_key)
     
-    # ВАЖНО: Указываем правильный base_url с /api/v1
-    client = OpenAI(
-        base_url="https://openrouter.ai/api/v1",
-        api_key=api_key,
-    )
-    
+    # --- ИЗМЕНЕНИЯ ЗДЕСЬ ---
     final_prompt = (
-        f"Задача: {prompt}\nContext: {search_data}\n"
-        "Output ONLY valid JSON matching this schema:\n"
-        "{\"title\": \"str\", \"executive_summary\": \"str\", \"client_pain_points\": [\"str\"], "
-        "\"solution_steps\": [{\"step_name\": \"str\", \"description\": \"str\"}], "
-        "\"budget_items\": [{\"item\": \"str\", \"price\": \"str\", \"time\": \"str\"}], "
-        "\"why_us\": \"str\", \"cta\": \"str\"}"
+        f"Задача клиента: {prompt}\n"
+        f"Данные из интернета (цены и детали): {search_data}\n\n"
+        "ИНСТРУКЦИЯ:\n"
+        "1. Составь Коммерческое Предложение на РУССКОМ ЯЗЫКЕ.\n"
+        "2. Используй найденные цены. Если их нет, придумай реалистичные рыночные цены в рублях.\n"
+        "3. Верни ТОЛЬКО валидный JSON (без лишнего текста) по этой схеме:\n"
+        "{\n"
+        '  "title": "Заголовок КП (на русском)",\n'
+        '  "executive_summary": "Суть предложения (на русском)",\n'
+        '  "client_pain_points": ["Проблема 1", "Проблема 2"],\n'
+        '  "solution_steps": [{"step_name": "Этап 1", "description": "Описание"}],\n'
+        '  "budget_items": [{"item": "Услуга", "price": "100 000 руб.", "time": "5 дней"}],\n'
+        '  "why_us": "Почему мы (на русском)",\n'
+        '  "cta": "Призыв к действию (на русском)"\n'
+        "}"
     )
 
     current_model = get_free_model_id()
@@ -104,12 +109,15 @@ def get_proposal_json(prompt: str) -> dict:
             
             response = client.chat.completions.create(
                 model=current_model,
-                messages=[{"role": "user", "content": final_prompt}],
+                messages=[
+                    # Жестко задаем роль: русский ассистент
+                    {"role": "system", "content": "Ты профессиональный бизнес-ассистент. Ты пишешь только на русском языке. Ты возвращаешь только JSON."},
+                    {"role": "user", "content": final_prompt}
+                ],
                 temperature=0.6,
                 extra_headers={"HTTP-Referer": "https://tg.me", "X-Title": "KP Bot"}
             )
-            
-            # --- ИСПРАВЛЕНИЕ: Безопасное получение контента ---
+            # ... (дальше код тот же: обработка ответа, очистка JSON)
             content = ""
             if hasattr(response, 'choices') and response.choices:
                 content = response.choices[0].message.content
