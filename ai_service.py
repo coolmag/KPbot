@@ -80,9 +80,13 @@ def get_proposal_json(prompt: str) -> dict:
     if not api_key: return _get_fallback_data("Нет ключа")
 
     search_data = search_prices(prompt)
-    client = OpenAI(base_url="https://openrouter.ai/v1", api_key=api_key)
     
-    # Для DeepSeek лучше работает простой промпт
+    # ВАЖНО: Указываем правильный base_url с /api/v1
+    client = OpenAI(
+        base_url="https://openrouter.ai/api/v1",
+        api_key=api_key,
+    )
+    
     final_prompt = (
         f"Задача: {prompt}\nContext: {search_data}\n"
         "Output ONLY valid JSON matching this schema:\n"
@@ -101,12 +105,20 @@ def get_proposal_json(prompt: str) -> dict:
             response = client.chat.completions.create(
                 model=current_model,
                 messages=[{"role": "user", "content": final_prompt}],
-                temperature=0.6, # Чуть строже
+                temperature=0.6,
                 extra_headers={"HTTP-Referer": "https://tg.me", "X-Title": "KP Bot"}
             )
             
-            if not response.choices: raise ValueError("Empty choices")
-            content = response.choices[0].message.content
+            # --- ИСПРАВЛЕНИЕ: Безопасное получение контента ---
+            content = ""
+            if hasattr(response, 'choices') and response.choices:
+                content = response.choices[0].message.content
+            elif isinstance(response, dict) and 'choices' in response: # На случай если вернулся dict
+                content = response['choices'][0]['message']['content']
+            else:
+                logger.warning(f"⚠️ Странный ответ от API: {response}")
+                raise ValueError("Некорректный формат ответа API")
+            # --------------------------------------------------
             
             data = clean_json_response(content)
             
@@ -114,7 +126,7 @@ def get_proposal_json(prompt: str) -> dict:
                 logger.info("✅ Успех! JSON получен.")
                 return data
             else:
-                logger.warning(f"⚠️ Ответ не содержит JSON. Длина ответа: {len(content)}")
+                logger.warning(f"⚠️ Ответ не содержит валидный JSON. Текст: {content[:100]}...")
                 
         except Exception as e:
             logger.warning(f"⚠️ Ошибка {current_model}: {e}")
