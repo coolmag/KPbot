@@ -10,10 +10,7 @@ import re
 
 logger = logging.getLogger(__name__)
 
-# ... (функции clean_json_response, get_free_model_id, search_prices оставляем БЕЗ изменений) ...
-# (Если они у тебя сохранились - отлично. Если нет - скопируй из моего предыдущего сообщения)
-# Для надежности дублирую ВЕСЬ файл целиком ниже:
-
+# --- ФУНКЦИИ ВЫБОРА МОДЕЛЕЙ И ПОИСКА ---
 def get_free_model_id(exclude_model=None) -> str:
     try:
         url = "https://openrouter.ai/api/v1/models"
@@ -69,6 +66,7 @@ def clean_json_response(content: str) -> dict | None:
     except: pass
     return None
 
+# --- ОСНОВНАЯ ФУНКЦИЯ ---
 def get_proposal_json(prompt: str) -> dict:
     api_key = os.getenv("OPENROUTER_API_KEY")
     if not api_key: return _get_fallback_data("Нет ключа")
@@ -85,20 +83,22 @@ def get_proposal_json(prompt: str) -> dict:
         "ПРАВИЛО ЦЕН: Бери цены из поиска. Если их нет — ставь рыночные."
     )
     
-    final_prompt = f\"\"\"ЗАПРОС: {prompt}
-НАЙДЕННЫЕ ЦЕНЫ: {search_data}
-
-ВЕРНИ JSON (без Markdown):
-{{
-  "title": "Название (укажи мощность котла)",
-  "executive_summary": "Описание...",
-  "client_pain_points": ["..."],
-  "solution_steps": [{{ "step_name": "...", "description": "..." }}],
-  "budget_items": [{{ "item": "Наименование (бренд, мощность)", "price": "X руб.", "time": "X дн." }}],
-  "why_us": "...",
-  "cta": "..."
-}}
-\"\"\"
+    # Склеиваем промпт безопасно (без f-строк с тройными кавычками)
+    final_prompt = (
+        "ЗАПРОС: " + prompt + "\n" +
+        "НАЙДЕННЫЕ ЦЕНЫ: " + search_data + "\n\n" +
+        "ВЕРНИ JSON (без Markdown):\n" +
+        "{\n" +
+        '  "title": "Название (укажи мощность котла)",\n' +
+        '  "executive_summary": "Описание...",\n' +
+        '  "client_pain_points": ["..."],\n' +
+        '  "solution_steps": [{"step_name": "...", "description": "..."}],\n' +
+        '  "budget_items": [{"item": "Наименование (бренд, мощность)", "price": "X руб.", "time": "X дн."}],
+' +
+        '  "why_us": "...",\n' +
+        '  "cta": "..."\n' +
+        "}"
+    )
 
     current_model = get_free_model_id()
 
