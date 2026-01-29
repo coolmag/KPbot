@@ -4,73 +4,77 @@ import os
 import logging
 import json
 import time
+import re
 
 logger = logging.getLogger(__name__)
 
-# Список моделей (Solar Pro 3 и Llama отлично умеют работать с контекстом)
+# Список самых НАДЕЖНЫХ бесплатных моделей на OpenRouter (проверено по API)
 FREE_MODELS = [
-    "upstage/solar-pro-3-preview:free",
-    "meta-llama/llama-3.3-70b-instruct:free",
-    "liquid/lfm-2.5-1.2b:free",
+    "google/gemma-2-9b-it:free",           # Google Gemma 2 (Очень стабильная)
+    "meta-llama/llama-3.1-8b-instruct:free", # Llama 3.1 8B (Легкая и быстрая)
+    "huggingfaceh4/zephyr-7b-beta:free",   # Zephyr (Хорошо следует инструкциям)
+    "mistralai/mistral-7b-instruct:free",  # Mistral (Классика)
+    "microsoft/phi-3-mini-128k-instruct:free" # Microsoft Phi-3 (Маленькая, но удаленькая)
 ]
 
 def search_prices(query: str) -> str:
-    """
-    Ищет актуальные цены и информацию в DuckDuckGo.
-    """
+    """Гуглит цены через DuckDuckGo"""
     try:
-        logger.info(f"🔎 Ищу в DuckDuckGo: {query}...")
-        results = DDGS().text(query, max_results=4)
+        # Очищаем запрос от лишнего мусора
+        clean_query = query.replace("Данные об исполнителе:", "").replace("Данные о клиенте:", "").strip()
+        # Берем только последние слова, чтобы поиск был точнее
+        short_query = " ".join(clean_query.split()[-10:]) 
+        
+        logger.info(f"🔎 Гуглю: {short_query}...")
+        results = DDGS().text(short_query, max_results=3)
+        
         if not results:
-            return "Нет данных из интернета."
+            return ""
             
-        search_context = "Найденная информация из интернета:\n"
+        context = "Найденные данные из интернета (используй их для цен):\n"
         for res in results:
-            search_context += f"- {res['title']}: {res['body']}\n"
-            
-        return search_context
+            context += f"- {res['title']}: {res['body']}\n"
+        return context
+        
     except Exception as e:
         logger.error(f"⚠️ Ошибка поиска: {e}")
-        return "Ошибка поиска данных."
+        return ""
 
 def get_proposal_json(prompt: str) -> dict:
     api_key = os.getenv("OPENROUTER_API_KEY")
     if not api_key:
-        logger.error("❌ OPENROUTER_API_KEY не найден!")
-        return _get_fallback_data("Нет ключа API")
+        logger.error("❌ Нет ключа OpenRouter!")
+        return _get_fallback_data("Нет API ключа")
 
-    # 1. Сначала ищем информацию в интернете!
-    # Вытаскиваем суть запроса из промпта (это грубо, но сработает)
-    # Промпт обычно содержит "Задача: Строим котельную..."
-    # Мы просто поищем по всему тексту задачи.
-    search_query = f"цена стоимость {prompt[-100:]}" # Берем последние 100 символов (сама задача)
-    search_data = search_prices(search_query)
+    # 1. Поиск (Search)
+    search_data = search_prices(prompt)
     
-    logger.info("🧠 Данные найдены, отправляю в ИИ...")
-
+    # 2. ИИ (Generation)
     client = OpenAI(
         base_url="https://openrouter.ai/api/v1",
         api_key=api_key,
     )
     
-    # 2. Формируем умный промпт с контекстом
     final_prompt = (
-        f"ЗАДАЧА ПОЛЬЗОВАТЕЛЯ:\n{prompt}\n\n"
-        f"{search_data}\n\n" # <--- Вставляем найденные цены!
-        "ИНСТРУКЦИЯ:\n"
-        "Используя найденную информацию (если она полезна), составь КП в формате JSON. "
-        "Если точных цен нет, дай экспертную оценку на основе данных. "
-        "Структура JSON: {title, executive_summary, client_pain_points, solution_steps, budget_items, why_us, cta}."
+        f"ЗАДАЧА: {prompt}\n\n"
+        f"{search_data}\n\n"
+        "ИНСТРУКЦИЯ: Составь коммерческое предложение в формате JSON. "
+        "Структура JSON: "
+        '{"title": "...", "executive_summary": "...", "client_pain_points": ["..."], '
+        '"solution_steps": [{"step_name": "...", "description": "..."}], '
+        '"budget_items": [{"item": "...", "price": "...", "time": "..."}], '
+        '"why_us": "...", "cta": "..."}. '
+        "Важно: Отвечай ТОЛЬКО валидным JSON. Без текста до и после."
     )
-
-    system_instruction = "Ты — эксперт по продажам. Отвечай ТОЛЬКО валидным JSON."
 
     for model in FREE_MODELS:
         try:
+            logger.info(f"🧠 Пробую модель: {model}...")
+            
             response = client.chat.completions.create(
                 model=model,
                 messages=[
-                    {"role": "system", "content": system_instruction},
+                    {"role": "system", "content": "Ты помощник, который говорит только JSON."}, 
                     {"role": "user", "content": final_prompt}
                 ],
                 temperature=0.7,
@@ -80,31 +84,37 @@ def get_proposal_json(prompt: str) -> dict:
             content = response.choices[0].message.content
             if not content: continue
 
-            # Очистка JSON
+            # Экстрактор JSON (если модель добавила текст)
             clean_json = content.replace("```json", "").replace("```", "").strip()
+            
+            # Ищем границы JSON объекта
             start = clean_json.find('{')
             end = clean_json.rfind('}')
-            if start != -1 and end != -1:
-                clean_json = clean_json[start:end+1]
             
-            data = json.loads(clean_json)
-            if "title" in data:
-                logger.info(f"✅ Успех! {model} справилась.")
-                return data
-
+            if start != -1 and end != -1:
+                json_str = clean_json[start:end+1]
+                data = json.loads(json_str)
+                
+                # Валидация полей
+                if "title" in data:
+                    logger.info(f"✅ Успех! {model} сработала.")
+                    return data
+            
         except Exception as e:
-            logger.warning(f"⚠️ Ошибка {model}: {e}")
+            logger.warning(f"⚠️ Сбой {model}: {e}")
+            time.sleep(1)
             continue
 
-    return _get_fallback_data("ИИ недоступен")
+    logger.error("❌ Все модели недоступны.")
+    return _get_fallback_data("Сервисы перегружены")
 
 def _get_fallback_data(reason: str) -> dict:
     return {
         "title": "Черновик КП",
-        "executive_summary": "Не удалось сгенерировать КП.",
+        "executive_summary": f"Не удалось создать КП автоматически ({reason}).",
         "client_pain_points": [],
         "solution_steps": [],
-        "budget_items": [],
+        "budget_items": [{"item": "Ошибка генерации", "price": "-", "time": "-"}],
         "why_us": "-",
         "cta": "-"
     }
