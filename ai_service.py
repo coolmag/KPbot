@@ -1,104 +1,88 @@
-from openai import OpenAI
+import google.generativeai as genai
 import os
 import logging
 import json
 import time
+import random
 
 logger = logging.getLogger(__name__)
 
-# Актуальный список моделей на основе твоих скриншотов (Январь 2026)
-FREE_MODELS = [
-    "meta-llama/llama-3.3-70b-instruct:free",    # Топ 1: Быстрая и умная
-    "meta-llama/llama-3.1-405b-instruct:free",   # Топ 2: Самая мощная (но может быть медленной)
-    "nousresearch/hermes-3-llama-3.1-405b:free", # Топ 3: "Гермес" (очень креативная)
-    "google/gemma-2-9b-it:free",                 # Запасная (Google Gemma)
-]
+# Настраиваем API один раз
+api_key = os.getenv("GOOGLE_API_KEY")
+if api_key:
+    genai.configure(api_key=api_key)
 
 def get_proposal_json(prompt: str) -> dict:
-    api_key = os.getenv("OPENROUTER_API_KEY")
     if not api_key:
-        logger.error("❌ OPENROUTER_API_KEY не найден!")
-        return _get_fallback_data("Нет ключа API")
+        logger.error("❌ GOOGLE_API_KEY не найден.")
+        return _get_fallback_data("Нет ключа")
 
-    client = OpenAI(
-        base_url="https://openrouter.ai/api/v1",
-        api_key=api_key,
+    # Используем 'gemini-pro' - это алиас, который Google обычно держит живым
+    # Если он умрет, попробуем 'gemini-1.5-flash-latest'
+    models_to_try = [
+        "gemini-1.5-flash",
+        "gemini-1.5-flash-latest",
+        "gemini-pro",
+        "models/gemini-1.5-flash"
+    ]
+
+    system_instruction = (
+        "Ты — бизнес-ассистент. Твоя задача — вернуть JSON структуру КП. "
+        "НЕ используй Markdown. "
+        "Формат: {title, executive_summary, client_pain_points[], solution_steps[], budget_items[], why_us, cta}."
     )
     
-    system_instruction = (
-        "Ты — профессиональный составитель Коммерческих Предложений (B2B). "
-        "Верни ТОЛЬКО валидный JSON. Без Markdown, без лишних слов. "
-        "Структура: title, executive_summary, client_pain_points (list), "
-        "solution_steps (list of objects), budget_items (list of objects), why_us, cta. "
-        "Цены в рублях."
-    )
+    # Объединяем системный промпт и пользовательский, так как в старом API
+    # system_instruction не всегда поддерживается корректно
+    full_prompt = f"{system_instruction}\n\nЗАДАЧА:\n{prompt}\n\nJSON:"
 
-    for model in FREE_MODELS:
+    for model_name in models_to_try:
         try:
-            logger.info(f"🔄 Пробую модель: {model}...")
+            logger.info(f"🔄 Пробую Google (v0.8.3): {model_name}...")
             
-            response = client.chat.completions.create(
-                model=model,
-                messages=[
-                    {"role": "system", "content": system_instruction},
-                    {"role": "user", "content": prompt}
-                ],
-                temperature=0.7,
-                # Заголовки обязательны для Free Tier
-                extra_headers={
-                    "HTTP-Referer": "https://telegram.me/KP_Bot", 
-                    "X-Title": "KP Generator",
-                }
+            model = genai.GenerativeModel(model_name)
+            
+            # generation_config для JSON
+            response = model.generate_content(
+                full_prompt,
+                generation_config=genai.types.GenerationConfig(
+                    temperature=0.7,
+                    response_mime_type="application/json" # Пытаемся форсировать JSON
+                )
             )
             
-            # --- ЗАЩИТА ОТ ПУСТЫХ ОТВЕТОВ (Fix for NoneType error) ---
-            if not response or not response.choices:
-                logger.warning(f"⚠️ Модель {model} вернула пустой ответ (No choices).")
-                continue
-                
-            content = response.choices[0].message.content
-            if not content:
-                logger.warning(f"⚠️ Модель {model} вернула пустой текст.")
-                continue
-            # ---------------------------------------------------------
+            if not response.text:
+                raise ValueError("Пустой ответ")
 
-            # Чистим ответ от ```json и прочего мусора
-            clean_json = content.replace("```json", "").replace("```", "").strip()
+            # Чистим
+            clean_text = response.text.replace("```json", "").replace("```", "").strip()
+            data = json.loads(clean_text)
             
-            try:
-                data = json.loads(clean_json)
-            except json.JSONDecodeError:
-                # Иногда Llama пишет "Here is the JSON:" перед скобкой. Ищем первую { и последнюю }
-                start = clean_json.find('{')
-                end = clean_json.rfind('}') + 1
-                if start != -1 and end != -1:
-                    data = json.loads(clean_json[start:end])
-                else:
-                    raise ValueError("JSON не найден в ответе")
-
-            # Проверка целостности
-            if "title" not in data or "budget_items" not in data:
-                logger.warning(f"⚠️ Неполный JSON от {model}")
+            if "title" not in data:
                 continue
 
-            logger.info(f"✅ Успех! Сработала {model}")
+            logger.info(f"✅ Успех! {model_name} сработала.")
             return data
 
         except Exception as e:
-            logger.warning(f"⚠️ Ошибка {model}: {e}")
-            time.sleep(1) # Пауза перед следующей попыткой
+            if "429" in str(e):
+                logger.warning(f"⏳ 429 на {model_name}. Жду 5 сек...")
+                time.sleep(5)
+            elif "404" in str(e):
+                logger.warning(f"🚫 {model_name} не найдена.")
+            else:
+                logger.warning(f"⚠️ Ошибка {model_name}: {e}")
             continue
 
-    logger.error("❌ Все модели OpenRouter недоступны или перегружены.")
-    return _get_fallback_data("Все линии заняты")
+    return _get_fallback_data("Google API недоступен")
 
 def _get_fallback_data(reason: str) -> dict:
     return {
-        "title": "Черновик КП (Режим оффлайн)",
-        "executive_summary": f"К сожалению, нейросеть сейчас недоступна ({reason}).",
-        "client_pain_points": ["Перегрузка бесплатных каналов"],
+        "title": "Черновик КП (Сбой сети)",
+        "executive_summary": f"Не удалось связаться с AI ({reason}).",
+        "client_pain_points": ["Ошибка соединения"],
         "solution_steps": [],
-        "budget_items": [{"item": "Ручной расчет", "price": "По запросу", "time": "-"}],
-        "why_us": "Мы работаем над стабильностью.",
-        "cta": "Попробуйте позже"
+        "budget_items": [{"item": "-", "price": "-", "time": "-"}],
+        "why_us": "-",
+        "cta": "Повторите позже"
     }
