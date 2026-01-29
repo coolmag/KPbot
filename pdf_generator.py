@@ -19,36 +19,24 @@ COLOR_BG_HEADER = colors.HexColor("#ECF0F1")
 COLOR_TEXT = colors.HexColor("#34495E")
 
 def add_watermark(canvas, doc):
-    """Рисует водяной знак и футер на каждой странице"""
+    """Рисует водяной знак и футер"""
     canvas.saveState()
     
-    # --- ВОДЯНОЙ ЗНАК ---
+    # Водяной знак
     canvas.setFont("Helvetica-Bold", 60)
-    canvas.setFillColor(colors.grey, alpha=0.1) # Прозрачность 10%
-    canvas.translate(10*cm, 15*cm) # Центр страницы
-    canvas.rotate(45) # Поворот на 45 градусов
+    canvas.setFillColor(colors.grey, alpha=0.1)
+    canvas.translate(10*cm, 15*cm)
+    canvas.rotate(45)
     canvas.drawCentredString(0, 0, "KOTEL.MSK.RU")
     
     canvas.restoreState()
     
-    # --- ФУТЕР С ССЫЛКОЙ ---
+    # Футер
     canvas.saveState()
     canvas.setFont("Helvetica", 9)
     canvas.setFillColor(colors.HexColor("#7F8C8D"))
-    
     footer_text = "Профессиональный монтаж отопления | KOTEL.MSK.RU"
-    
-    # Рисуем текст по центру внизу
     canvas.drawCentredString(A4[0]/2, 1*cm, footer_text)
-    
-    # Делаем "KOTEL.MSK.RU" кликабельной ссылкой
-    # (Примерно вычисляем координаты ссылки, это не идеально точно, но работает)
-    link_x = A4[0]/2 + 40 # Смещение вправо от центра
-    link_width = 80
-    
-    # canvas.linkURL("https://kotel.msk.ru", (rect_x1, rect_y1, rect_x2, rect_y2))
-    # Но проще сделать весь футер ссылкой, если не заморачиваться с координатами
-    
     canvas.restoreState()
 
 def create_proposal_pdf(data: dict) -> bytes:
@@ -95,16 +83,15 @@ def create_proposal_pdf(data: dict) -> bytes:
 
     elements = []
 
-    # ТИТУЛ
+    # Контент
     elements.append(Spacer(1, 1*cm))
     elements.append(Paragraph(data.get('title', 'КОММЕРЧЕСКОЕ ПРЕДЛОЖЕНИЕ'), style_title))
     
-    # Ссылка под заголовком
     link = '<a href="https://kotel.msk.ru" color="blue"><u>https://kotel.msk.ru</u></a>'
     elements.append(Paragraph(link, style_link))
     elements.append(Spacer(1, 1*cm))
     
-    # СУТЬ
+    # Суть
     summary = data.get('executive_summary', '')
     if summary:
         t = Table([[Paragraph(summary, style_body)]], colWidths=[16*cm])
@@ -117,7 +104,7 @@ def create_proposal_pdf(data: dict) -> bytes:
     
     elements.append(Spacer(1, 1*cm))
 
-    # БОЛИ
+    # Боли
     pain = data.get('client_pain_points', [])
     if pain:
         elements.append(Paragraph("🎯 Задачи", style_h2))
@@ -126,7 +113,7 @@ def create_proposal_pdf(data: dict) -> bytes:
     
     elements.append(Spacer(1, 0.5*cm))
 
-    # РЕШЕНИЕ
+    # Решение
     steps = data.get('solution_steps', [])
     if steps:
         elements.append(Paragraph("🚀 Решение", style_h2))
@@ -139,7 +126,7 @@ def create_proposal_pdf(data: dict) -> bytes:
 
     elements.append(PageBreak())
 
-    # СМЕТА
+    # Смета
     budget = data.get('budget_items', [])
     if budget:
         elements.append(Paragraph("💰 Смета (Ориентировочно)", style_h2))
@@ -147,17 +134,24 @@ def create_proposal_pdf(data: dict) -> bytes:
         for item in budget:
             table_data.append([
                 Paragraph(item.get('item', ''), style_body),
-                item.get('time', '-'),
-                item.get('price', '-')
+                Paragraph(item.get('time', '-'), style_body), # Обернул в Paragraph, чтобы шрифт работал
+                Paragraph(item.get('price', '-'), style_body) # Обернул в Paragraph
             ])
             
         t = Table(table_data, colWidths=[9*cm, 3.5*cm, 4.5*cm])
+        
+        # --- ИСПРАВЛЕНИЕ ЗДЕСЬ ---
         t.setStyle(TableStyle([
             ('BACKGROUND', (0,0), (-1,0), COLOR_PRIMARY),
             ('TEXTCOLOR', (0,0), (-1,0), colors.white),
-            ('FONTNAME', (0,0), (-1,0), font_regular),
+            
+            # Было: ('FONTNAME', (0,0), (-1,0), font_regular) -> Только шапка
+            # Стало: (-1,-1) -> Вся таблица
+            ('FONTNAME', (0,0), (-1,-1), font_regular), 
+            
             ('GRID', (0,0), (-1,-1), 0.5, colors.grey),
-            ('ROWBACKGROUNDS', (0,1), (-1,-1), [colors.white, COLOR_BG_HEADER])
+            ('ROWBACKGROUNDS', (0,1), (-1,-1), [colors.white, COLOR_BG_HEADER]),
+            ('VALIGN', (0,0), (-1,-1), 'TOP'),
         ]))
         elements.append(t)
 
@@ -171,7 +165,6 @@ def create_proposal_pdf(data: dict) -> bytes:
         elements.append(Paragraph("Заявки на сайте: " + link, style_body))
 
     try:
-        # ВАЖНО: передаем функцию onFirstPage и onLaterPages для отрисовки водяного знака
         doc.build(elements, onFirstPage=add_watermark, onLaterPages=add_watermark)
     except Exception as e:
         logger.error(f"PDF Error: {e}")
