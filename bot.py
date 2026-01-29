@@ -23,43 +23,60 @@ logging.basicConfig(
 )
 logger = logging.getLogger(__name__)
 
-# --- ЧИТАЕМ СПИСОК РАЗРЕШЕННЫХ ГРУПП ИЗ ПЕРЕМЕННЫХ ОКРУЖЕНИЯ ---
-def get_allowed_chats():
-    allowed_chats_str = os.getenv("ALLOWED_CHAT_IDS", "")
-    if not allowed_chats_str:
-        logger.warning("Переменная ALLOWED_CHAT_IDS не задана. Бот будет работать только в личных сообщениях.")
+# --- СИСТЕМА БЕЗОПАСНОСТИ: БЕЛЫЕ СПИСКИ ID ---
+def _parse_ids_from_env(env_var_name: str) -> list[int]:
+    """Парсит ID из переменной окружения (строка через запятую)."""
+    ids_str = os.getenv(env_var_name, "")
+    if not ids_str:
         return []
     try:
-        # Преобразуем строку "id1,id2,id3" в список чисел [id1, id2, id3]
-        return [int(chat_id.strip()) for chat_id in allowed_chats_str.split(',')]
+        return [int(id.strip()) for id in ids_str.split(',')]
     except ValueError:
-        logger.error("Ошибка в формате ALLOWED_CHAT_IDS. ID должны быть числами, разделенными запятой.")
+        logger.error(f"Ошибка в формате переменной {env_var_name}. ID должны быть числами, разделенными запятой.")
         return []
 
-ALLOWED_CHATS = get_allowed_chats()
+ALLOWED_CHAT_IDS = _parse_ids_from_env("ALLOWED_CHAT_IDS")
+ALLOWED_USER_IDS = _parse_ids_from_env("ALLOWED_USER_IDS")
+
+logger.info(f"Загружены ID разрешенных чатов: {ALLOWED_CHAT_IDS}")
+logger.info(f"Загружены ID разрешенных пользователей: {ALLOWED_USER_IDS}")
 # --------------------------------------------------------------------
 
 ABOUT_YOU, ABOUT_CLIENT, TASK_INFO = range(3)
 
 async def check_chat_access(update: Update):
-    """Проверяет, можно ли работать в этом чате"""
+    """
+    Проверяет доступ. Логика:
+    - В приватных чатах (ЛС) разрешено только пользователям из белого списка.
+    - В групповых чатах разрешено всем, если группа в белом списке.
+    """
+    user_id = update.effective_user.id
     chat_id = update.effective_chat.id
     chat_type = update.effective_chat.type
-    
-    # В личке (PRIVATE) работаем всегда
+
+    # 1. Логика для личных сообщений (ЛС)
     if chat_type == 'private':
-        return True
-        
-    # В группах - только если ID в белом списке
-    if chat_id in ALLOWED_CHATS:
-        return True
-        
-    # Если группа чужая
-    await update.message.reply_text("⛔ Извините, я корпоративный бот KOTEL.MSK.RU и работаю только в авторизованных чатах.")
-    try:
-        await update.effective_chat.leave() # Бот удаляется из группы
-    except Exception as e:
-        logger.error(f"Не удалось выйти из чата: {e}")
+        if user_id in ALLOWED_USER_IDS:
+            return True
+        else:
+            logger.warning(f"Отказ в доступе (ЛС). UserID: {user_id}")
+            await update.message.reply_text("⛔ Доступ запрещен. Этот бот предназначен для корпоративного использования.")
+            return False
+
+    # 2. Логика для групп
+    if chat_type in ['group', 'supergroup']:
+        if chat_id in ALLOWED_CHAT_IDS:
+            return True
+        else:
+            logger.warning(f"Попытка использования в неавторизованной группе. ChatID: {chat_id}")
+            await update.message.reply_text("⛔ Я не могу работать в этом чате. Я являюсь частным ботом KOTEL.MSK.RU.")
+            try:
+                await update.effective_chat.leave()
+            except Exception as e:
+                logger.error(f"Не удалось выйти из чата {chat_id}: {e}")
+            return False
+            
+    # 3. На случай других типов чатов (например, каналы)
     return False
 
 async def start(update: Update, context: ContextTypes.DEFAULT_TYPE) -> int:
