@@ -71,10 +71,8 @@ async def task_info(update: Update, context: ContextTypes.DEFAULT_TYPE) -> int:
     msg = await update.message.reply_text("⏳ Думаю... (Ищу цены, проектирую)")
 
     prompt = (
-        f"Исполнитель: {context.user_data.get('about_you')}
-"
-        f"Клиент: {context.user_data.get('about_client')}
-"
+        f"Исполнитель: {context.user_data.get('about_you')}\n"
+        f"Клиент: {context.user_data.get('about_client')}\n"
         f"Задача: {context.user_data.get('task_info')}"
     )
 
