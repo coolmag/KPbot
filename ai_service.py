@@ -4,11 +4,9 @@ import os
 import logging
 import json
 import time
-import re
 
 logger = logging.getLogger(__name__)
 
-# Схема для JSON Mode (Gemini это любит)
 PROPOSAL_SCHEMA = {
     "type": "OBJECT",
     "properties": {
@@ -43,39 +41,37 @@ PROPOSAL_SCHEMA = {
 }
 
 def get_proposal_json(prompt: str) -> dict:
-    """
-    Генерация через Google Gemini 2.5 Flash с Google Search.
-    """
     api_key = os.getenv("GOOGLE_API_KEY")
-    if not api_key:
-        logger.error("❌ GOOGLE_API_KEY не найден!")
-        return _get_fallback_data("Нет API ключа")
+    if not api_key: return _get_fallback_data("Нет ключа")
 
     client = genai.Client(api_key=api_key)
     
-    # Промпт инженера
+    # ИСПОЛЬЗУЕМ GEMMA 3 (у неё лимит 14к запросов!)
+    # Пробуем разные варианты написания, так как SDK может быть капризным
+    TARGET_MODELS = [
+        "gemma-3-27b-it", # Обычно так называется Instruct версия
+        "gemma-3-27b",
+        "models/gemma-3-27b-it",
+        "gemini-2.5-flash" # Запасной, если Gemma недоступна через API (иногда она local-only)
+    ]
+
     system_instruction = (
-        "Ты — Главный инженер компании KOTEL.MSK.RU (стаж 30 лет). "
-        "Ты составляешь сметы для котельных. "
-        "Твои правила:\n"
-        "1. Пиши только на русском. Используй профессиональные термины (гидрострелка, бойлер косвенного нагрева).\n"
-        "2. Исправляй ошибки клиента ('конвективы' -> 'конвекторы').\n"
-        "3. В смете ОБЯЗАТЕЛЬНО указывай цены в рублях (примерно, рыночные). Не оставляй поля пустыми!\n"
+        "Ты — Инженер-сметчик. Составь КП на котельную. "
+        "Язык: Русский. Исправляй ошибки ('конвективы' -> 'конвекторы'). "
+        "Цены: Указывай реальные рыночные цены в рублях (примерно). "
+        "Не оставляй поля пустыми."
     )
 
-    # Список моделей (от новой к старой)
-    # Используем названия без префикса models/ для нового SDK, если он сам подставляет
-    MODELS = ["gemini-2.0-flash-exp", "gemini-1.5-flash", "gemini-1.5-pro"]
-
-    for model_name in MODELS:
+    for model_name in TARGET_MODELS:
         try:
-            logger.info(f"⚡ Пробую Google: {model_name}...")
+            logger.info(f"⚡ Пробую модель: {model_name}...")
             
-            # Конфигурация с ПОИСКОМ (Google Search Grounding)
-            # Внимание: Tools configuration может отличаться в разных версиях SDK.
-            # Если tool google_search_retrieval недоступен на Free Tier, он просто проигнорируется или выдаст ошибку,
-            # тогда мы переключимся на обычный режим.
-            
+            # Gemma 3 может не поддерживать tools (поиск), поэтому пробуем БЕЗ поиска сначала
+            # Или включаем поиск только для Gemini
+            tools = []
+            if "gemini" in model_name:
+                tools = [types.Tool(google_search=types.GoogleSearch())]
+
             response = client.models.generate_content(
                 model=model_name,
                 contents=prompt,
@@ -83,11 +79,8 @@ def get_proposal_json(prompt: str) -> dict:
                     system_instruction=system_instruction,
                     response_mime_type="application/json",
                     response_schema=PROPOSAL_SCHEMA,
-                    temperature=0.4,
-                    # Включаем поиск (если доступно)
-                    tools=[types.Tool(
-                        google_search=types.GoogleSearch() # Встроенный гуглинг!
-                    )]
+                    temperature=0.3,
+                    tools=tools
                 )
             )
             
@@ -97,20 +90,20 @@ def get_proposal_json(prompt: str) -> dict:
                 
         except Exception as e:
             logger.warning(f"⚠️ Ошибка {model_name}: {e}")
-            # Если ошибка 429 (лимиты), ждем
-            if "429" in str(e):
-                time.sleep(5)
-            continue
+            if "429" in str(e): # Если лимиты
+                continue 
+            if "404" in str(e): # Если модель не найдена
+                continue
 
-    return _get_fallback_data("Google API недоступен")
+    return _get_fallback_data("Лимиты исчерпаны")
 
 def _get_fallback_data(reason: str) -> dict:
     return {
-        "title": "Смета (Расчет менеджером)",
-        "executive_summary": f"Система AI перегружена ({reason}). Свяжитесь с нами.",
+        "title": "КП (Требуется оператор)",
+        "executive_summary": f"Все AI модели заняты ({reason}).",
         "client_pain_points": [],
         "solution_steps": [],
-        "budget_items": [{"item": "Ручной расчет", "price": "По запросу", "time": "-"}],
-        "why_us": "KOTEL.MSK.RU",
-        "cta": "Позвонить"
+        "budget_items": [{"item": "-", "price": "-", "time": "-"}],
+        "why_us": "-",
+        "cta": "-"
     }
