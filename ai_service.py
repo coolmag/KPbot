@@ -85,23 +85,20 @@ def get_proposal_json(prompt: str) -> dict:
         "ПРАВИЛО ЦЕН: Бери цены из поиска. Если их нет — ставь рыночные."
     )
     
-    # --- ИСПРАВЛЕННАЯ СТРОКА ---
-    final_prompt = (
-        f"ЗАПРОС: {prompt}\n"
-        f"НАЙДЕННЫЕ ЦЕНЫ: {search_data}\n\n"
-        "ВЕРНИ JSON (без Markdown):\n"
-        "{\n"
-        '  "title": "Название (укажи мощность котла)",\n'
-        '  "executive_summary": "Описание...",\n'
-        '  "client_pain_points": ["..."],\n'
-        '  "solution_steps": [{"step_name": "...", "description": "..."}],\n'
-        '  "budget_items": [{"item": "Наименование (бренд, мощность)", "price": "X руб.", "time": "X дн."}],
-'
-        '  "why_us": "...",\n'
-        '  "cta": "..."
-'        "}\n"
-    )
-    # --------------------------
+    final_prompt = f\"\"\"ЗАПРОС: {prompt}
+НАЙДЕННЫЕ ЦЕНЫ: {search_data}
+
+ВЕРНИ JSON (без Markdown):
+{{
+  "title": "Название (укажи мощность котла)",
+  "executive_summary": "Описание...",
+  "client_pain_points": ["..."],
+  "solution_steps": [{{ "step_name": "...", "description": "..." }}],
+  "budget_items": [{{ "item": "Наименование (бренд, мощность)", "price": "X руб.", "time": "X дн." }}],
+  "why_us": "...",
+  "cta": "..."
+}}
+\"\"\"
 
     current_model = get_free_model_id()
 
