@@ -10,7 +10,7 @@ from telegram.ext import (
     ContextTypes, ConversationHandler, TypeHandler
 )
 
-from ai_service import get_proposal_text
+from ai_service import get_proposal_json # <-- Импортируем новую функцию
 from pdf_generator import create_proposal_pdf
 from utils import ensure_font_exists
 
@@ -53,35 +53,40 @@ async def about_client(update: Update, context: ContextTypes.DEFAULT_TYPE) -> in
 async def task_info(update: Update, context: ContextTypes.DEFAULT_TYPE) -> int:
     context.user_data['task_info'] = update.message.text
     
-    await update.message.reply_text("🤖 Анализирую задачу и пишу текст...")
+    await update.message.reply_text("🤖 Генерирую структуру КП (Data-Driven)...")
 
     prompt = (
-        f"Исполнитель: {context.user_data['about_you']}\n"
-        f"Клиент: {context.user_data['about_client']}\n"
-        f"Задача: {context.user_data['task_info']}"
+        f"Данные об исполнителе: {context.user_data['about_you']}\n"
+        f"Данные о клиенте: {context.user_data['about_client']}\n"
+        f"Задача проекта: {context.user_data['task_info']}"
     )
 
     loop = asyncio.get_running_loop()
     
+    # 1. Получаем JSON структуру
     try:
-        proposal_text = await loop.run_in_executor(None, get_proposal_text, prompt)
+        proposal_data = await loop.run_in_executor(None, get_proposal_json, prompt)
+        if not proposal_data:
+            raise Exception("AI вернул пустой ответ")
     except Exception as e:
         logger.error(f"Ошибка AI: {e}")
-        await update.message.reply_text("Ошибка при генерации текста.")
+        await update.message.reply_text("Произошла ошибка при обращении к мозгу ИИ.")
         return ConversationHandler.END
 
-    await update.message.reply_text("📄 Верстаю PDF документ...")
+    await update.message.reply_text("🎨 Верстаю дизайнерский PDF...")
 
+    # 2. Генерируем PDF по JSON
     try:
-        pdf_bytes = await loop.run_in_executor(None, create_proposal_pdf, proposal_text)
+        pdf_bytes = await loop.run_in_executor(None, create_proposal_pdf, proposal_data)
         
         if not pdf_bytes:
             raise Exception("PDF файл пустой")
 
+        # Отправляем
         await update.message.reply_document(
             document=pdf_bytes,
-            filename="Commercial_Proposal.pdf",
-            caption="✅ Ваше КП готово! Используйте /start для нового."
+            filename=f"KP_{context.user_data.get('about_client', 'Client')[:10]}.pdf",
+            caption="🚀 Ваше КП готово! Заряжено на успех."
         )
     except Exception as e:
         logger.error(f"Ошибка отправки PDF: {e}")
