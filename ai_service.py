@@ -10,37 +10,43 @@ import re
 
 logger = logging.getLogger(__name__)
 
-# ... (функции clean_json_response и get_free_model_id оставляем как были) ...
-# (Скопируй их из предыдущего рабочего варианта, или возьми полный файл ниже)
+# ... (функции clean_json_response, get_free_model_id, search_prices оставляем БЕЗ изменений) ...
+# (Если они у тебя сохранились - отлично. Если нет - скопируй из моего предыдущего сообщения)
+# Для надежности дублирую ВЕСЬ файл целиком ниже:
 
 def get_free_model_id(exclude_model=None) -> str:
-    # ... (Тот же код выбора умных моделей) ...
     try:
         url = "https://openrouter.ai/api/v1/models"
         response = requests.get(url)
         if response.status_code == 200:
             models_data = response.json().get('data', [])
             good = ['deepseek', 'llama-3.3', 'gemini-2', '70b', 'mistral-large']
-            candidates = [m['id'] for m in models_data if ':free' in m['id'] and any(g in m['id'] for g in good) and m['id'] != exclude_model]
-            if candidates: return random.choice(candidates)
+            bad = ['1b', '3b', 'venice', 'liquid', 'chimera', 'vision'] 
+            candidates = []
+            for m in models_data:
+                mid = m['id'].lower()
+                if ':free' not in mid: continue
+                if any(b in mid for b in bad): continue
+                if mid == exclude_model: continue
+                if any(g in mid for g in good) or '8b' in mid:
+                    candidates.append(m['id'])
+            
+            if candidates:
+                top = [c for c in candidates if 'deepseek' in c or '70b' in c]
+                return random.choice(top) if top else random.choice(candidates)
     except: pass
     return "google/gemini-2.0-flash-exp:free"
 
 def search_prices(query: str) -> str:
     """Ищет цены под конкретную мощность"""
     try:
-        # Пытаемся найти площадь в запросе (например "450 кв")
         area_match = re.search(r'(\d+)\s*(кв|м2|метр)', query)
-        power_kw = "24" # Дефолт
-        
+        power_kw = "24"
         if area_match:
             area = int(area_match.group(1))
-            # Формула: 1 кВт на 10 м2 + запас
-            calc_power = int(area / 10 * 1.2) 
-            power_kw = str(calc_power)
-            logger.info(f"🧮 Расчет: Дом {area}м2 -> Котел {power_kw} кВт")
+            power_kw = str(int(area / 10 * 1.2))
+            logger.info(f"🧮 Дом {area}м2 -> Котел {power_kw} кВт")
         
-        # Формируем умный запрос
         search_q = f"цена газовый котел {power_kw} кВт Viessmann Buderus 2025"
         logger.info(f"🔎 Гуглю: {search_q}")
         
@@ -50,9 +56,18 @@ def search_prices(query: str) -> str:
             for res in results:
                 context += f"- {res['title']}: {res['body']}\n"
         return context
-    except Exception as e:
-        logger.error(f"Search error: {e}")
-        return "Цены: Котел 60кВт ~ 150 000 руб."
+    except Exception: return "Цены: 150 000 руб."
+
+def clean_json_response(content: str) -> dict | None:
+    try:
+        content = re.sub(r'<think>.*?</think>', '', content, flags=re.DOTALL)
+        content = content.replace("```json", "").replace("```", "").strip()
+        start = content.find('{')
+        end = content.rfind('}')
+        if start != -1 and end != -1:
+            return json.loads(content[start:end+1])
+    except: pass
+    return None
 
 def get_proposal_json(prompt: str) -> dict:
     api_key = os.getenv("OPENROUTER_API_KEY")
@@ -67,10 +82,10 @@ def get_proposal_json(prompt: str) -> dict:
         "Ты — Главный инженер KOTEL.MSK.RU (30 лет опыта).\n"
         "ТВОЯ ЗАДАЧА: Подобрать оборудование СТРОГО под площадь дома.\n"
         "ПРАВИЛО МОЩНОСТИ: 1 кВт на 10 м2. Если дом 450 м2 — котел должен быть 50-60 кВт. "
-        "Если ты предложишь котел 24 кВт на 450 м2 — ты уволен.\n"
-        "ПРАВИЛО ЦЕН: Бери цены из предоставленного поиска. Если их нет — ставь рыночные (150к+ за мощные котлы)."
+        "ПРАВИЛО ЦЕН: Бери цены из поиска. Если их нет — ставь рыночные."
     )
     
+    # --- ИСПРАВЛЕННАЯ СТРОКА ---
     final_prompt = (
         f"ЗАПРОС: {prompt}\n"
         f"НАЙДЕННЫЕ ЦЕНЫ: {search_data}\n\n"
@@ -86,6 +101,7 @@ def get_proposal_json(prompt: str) -> dict:
         '  "cta": "..."
 '        "}\n"
     )
+    # --------------------------
 
     current_model = get_free_model_id()
 
@@ -108,14 +124,10 @@ def get_proposal_json(prompt: str) -> dict:
             elif isinstance(response, dict) and 'choices' in response:
                 content = response['choices'][0]['message']['content']
             
-            # Чистим JSON
-            content = re.sub(r'<think>.*?</think>', '', content, flags=re.DOTALL)
-            content = content.replace("```json", "").replace("```", "").strip()
-            start = content.find('{')
-            end = content.rfind('}')
+            data = clean_json_response(content)
             
-            if start != -1 and end != -1:
-                return json.loads(content[start:end+1])
+            if data and "title" in data:
+                return data
                 
         except Exception as e:
             logger.warning(f"Error {current_model}: {e}")
