@@ -15,6 +15,8 @@ from pdf_generator import create_proposal_pdf
 from utils import ensure_font_exists
 from database import init_db, save_proposal, get_user_history, get_stats
 from sales_analyzer import analyze_sales
+from web_generator import generate_page
+from github_push import push_to_github
 
 load_dotenv()
 
@@ -98,7 +100,6 @@ async def start(update: Update, context: ContextTypes.DEFAULT_TYPE) -> int:
     return ABOUT_YOU
 
 async def about_you(update: Update, context: ContextTypes.DEFAULT_TYPE) -> int:
-    # В хендлерах внутри диалога тоже можно проверять, но обычно start достаточно.
     context.user_data['about_you'] = update.message.text
     await update.message.reply_text(
         "2️⃣ Кто ваш клиент? (Ниша, проблемы)",
@@ -117,15 +118,11 @@ async def about_client(update: Update, context: ContextTypes.DEFAULT_TYPE) -> in
 async def task_info(update: Update, context: ContextTypes.DEFAULT_TYPE) -> int:
     context.user_data['task_info'] = update.message.text
     
-    # Сохраняем лид в БД
     proposal_id = save_proposal(
         update.effective_user.id,
         context.user_data.get("about_client"),
         context.user_data.get("task_info")
     )
-
-    # Формируем веб-ссылку
-    web_link = f"http://localhost:8000/proposal/{proposal_id}"
 
     msg = await update.message.reply_text(f"⏳ Проектирую решение (ID: {proposal_id})...")
 
@@ -137,10 +134,8 @@ async def task_info(update: Update, context: ContextTypes.DEFAULT_TYPE) -> int:
 
     loop = asyncio.get_running_loop()
     try:
-        # Этап 1: Генерация КП
         proposal_data = await loop.run_in_executor(None, get_proposal_json, prompt)
         
-        # Этап 2: Анализ сделки
         await msg.edit_text(f"📈 Анализирую сделку (ID: {proposal_id})...")
         sales_data = await loop.run_in_executor(None, analyze_sales, prompt)
 
@@ -148,7 +143,6 @@ async def task_info(update: Update, context: ContextTypes.DEFAULT_TYPE) -> int:
             await msg.edit_text("❌ Ошибка генерации основного КП.")
             return ConversationHandler.END
 
-        # Этап 3: Отправка анализа менеджеру
         if sales_data:
             analysis_text = (
                 f"📊 AI анализ сделки (ID: {proposal_id})\n\n"
@@ -159,12 +153,27 @@ async def task_info(update: Update, context: ContextTypes.DEFAULT_TYPE) -> int:
             )
             await update.message.reply_text(analysis_text, parse_mode='Markdown')
 
-        # Этап 4: Отправка ссылки на веб-версию
+        # --- ГЕНЕРАЦИЯ, ПУБЛИКАЦИЯ И ОТПРАВКА ССЫЛКИ ---
+        await msg.edit_text("🔗 Генерирую и публикую веб-версию...")
+        
+        # Генерируем HTML
+        generate_page(
+            proposal_id,
+            context.user_data.get("about_client"),
+            context.user_data.get("task_info"),
+            proposal_data
+        )
+        
+        # Пушим в GitHub
+        push_to_github()
+        
+        # Отправляем ссылку
+        web_link = f"https://coolmag.github.io/KPbot/proposals/{proposal_id}.html"
         await update.message.reply_text(
             f"🌐 Онлайн версия КП:\n{web_link}"
         )
+        # -----------------------------------------
 
-        # Этап 5: Формирование и отправка PDF
         await msg.edit_text("📄 Формирую PDF...")
         pdf_bytes = await loop.run_in_executor(None, create_proposal_pdf, proposal_data)
         
