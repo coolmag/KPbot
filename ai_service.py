@@ -52,9 +52,7 @@ def get_smart_proposal(prompt: str) -> dict | None:
     try:
         response = client.models.generate_content(
             model='gemma-3-27b-it',
-            contents=system_instruction + f"
-
-ЗАПРОС ОТ МЕНЕДЖЕРА: {prompt}",
+            contents=system_instruction + f"\n\nЗАПРОС ОТ МЕНЕДЖЕРА: {prompt}",
             config=types.GenerateContentConfig(
                 response_mime_type="application/json",
                 # Мы просим вернуть JSON, соответствующий вашей модели Proposal (из models.py)
