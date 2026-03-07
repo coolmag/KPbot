@@ -11,6 +11,9 @@ if os.getenv("RAILWAY_ENVIRONMENT"):
 else:
     DB_PATH = Path("proposals.db")
 
+# 🛠️ ИСПРАВЛЕНИЕ: Принудительно создаем папку (например, /data), если её еще нет
+DB_PATH.parent.mkdir(parents=True, exist_ok=True)
+
 def init_db():
     conn = sqlite3.connect(DB_PATH)
     cursor = conn.cursor()
