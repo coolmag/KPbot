@@ -25,6 +25,9 @@ logging.basicConfig(
     level=logging.INFO,
     handlers=[logging.StreamHandler(sys.stdout)]
 )
+# Подавляем слишком подробные логи от HTTP-клиента, чтобы не светить токен
+logging.getLogger("httpx").setLevel(logging.WARNING)
+
 logger = logging.getLogger(__name__)
 
 # --- СИСТЕМА БЕЗОПАСНОСТИ: БЕЛЫЕ СПИСКИ ID ---

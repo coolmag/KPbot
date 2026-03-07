@@ -65,7 +65,7 @@ def analyze_sales(prompt):
     try:
 
         response = client.models.generate_content(
-            model="gemini-2.0-flash-exp",
+            model="gemini-1.5-flash-latest",
             contents=analysis_prompt,
             config=types.GenerateContentConfig(
                 temperature=0.2

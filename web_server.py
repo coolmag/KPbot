@@ -1,112 +1,71 @@
-from fastapi import FastAPI
-from fastapi.responses import HTMLResponse
-import sqlite3
+import os
+import logging
+from fastapi import FastAPI, HTTPException
+from fastapi.middleware.cors import CORSMiddleware
+import telegram
+import asyncio
 
+# --- CONFIGURATION ---
+# Загрузка переменных окружения
+BOT_TOKEN = os.getenv("TELEGRAM_BOT_TOKEN")
+# ID менеджера, куда будут приходить уведомления. Должен быть в .env
+MANAGER_ID = os.getenv("MANAGER_TELEGRAM_ID")
+
+logger = logging.getLogger(__name__)
+
+# --- INITIALIZATION ---
 app = FastAPI()
 
+# Настройка CORS для разрешения запросов с вашего сайта на GitHub Pages
+# Укажите реальный домен вашего сайта на GitHub Pages
+origins = [
+    "https://coolmag.github.io",
+    "http://localhost", # Для локальной разработки
+]
 
-def get_proposal(proposal_id):
+app.add_middleware(
+    CORSMiddleware,
+    allow_origins=origins,
+    allow_credentials=True,
+    allow_methods=["*"],
+    allow_headers=["*"],
+)
 
-    conn = sqlite3.connect("proposals.db")
-    cursor = conn.cursor()
-
-    cursor.execute(
-        "SELECT client, task, created_at FROM proposals WHERE id=?",
-        (proposal_id,)
-    )
-
-    row = cursor.fetchone()
-
-    conn.close()
-
-    return row
-
-
-@app.get("/proposal/{proposal_id}", response_class=HTMLResponse)
-def show_proposal(proposal_id: int):
-
-    data = get_proposal(proposal_id)
-
-    if not data:
-        return "<h1>Предложение не найдено</h1>"
-
-    client, task, date = data
-
-    html = f"""
-    <html>
-    <head>
-        <title>Коммерческое предложение</title>
-        <style>
-
-        body {{
-            font-family: Arial;
-            max-width: 900px;
-            margin: auto;
-            padding: 40px;
-        }}
-
-        .box {{
-            background: #f4f4f4;
-            padding: 20px;
-            border-radius: 10px;
-        }}
-
-        .btn {{
-            background: #1a252f;
-            color: white;
-            padding: 15px 25px;
-            border-radius: 8px;
-            text-decoration: none;
-        }}
-
-        </style>
-    </head>
-
-    <body>
-
-    <h1>Коммерческое предложение</h1>
-
-    <div class="box">
-
-    <h3>Клиент</h3>
-    <p>{client}</p>
-
-    <h3>Задача</h3>
-    <p>{task}</p>
-
-    <p>Дата: {date}</p>
-
-    </div>
-
-    <br>
-
-    <a class="btn" href="/accept/{proposal_id}">
-        Принять предложение
-    </a>
-
-    </body>
-    </html>
+# --- API ENDPOINTS ---
+@app.post("/api/accept/{proposal_id}")
+async def accept_proposal(proposal_id: int):
     """
-
-    return html
-
-@app.get("/accept/{proposal_id}", response_class=HTMLResponse)
-def accept_proposal(proposal_id: int):
-
-    html = f"""
-    <html>
-
-    <body style="font-family:Arial; text-align:center; padding:100px">
-
-    <h1>Спасибо!</h1>
-
-    <p>Вы приняли коммерческое предложение.</p>
-
-    <p>Менеджер свяжется с вами.</p>
-
-    </body>
-
-    </html>
+    API-метод, который вызывается при нажатии кнопки "Принять" на веб-странице.
+    Отправляет уведомление менеджеру.
     """
+    logger.info(f"Получен запрос на принятие КП #{proposal_id}")
 
-    return html
+    if not BOT_TOKEN or not MANAGER_ID:
+        logger.error("TELEGRAM_BOT_TOKEN или MANAGER_TELEGRAM_ID не установлены!")
+        raise HTTPException(status_code=500, detail="Сервер не настроен для отправки уведомлений.")
+
+    try:
+        bot = telegram.Bot(token=BOT_TOKEN)
+        text = f"🎉 **Сделка принята!**
+
+Клиент принял коммерческое предложение `ID: {proposal_id}`.
+
+Пора действовать! 🔥"
+        
+        await bot.send_message(
+            chat_id=MANAGER_ID,
+            text=text,
+            parse_mode='Markdown'
+        )
+        
+        logger.info(f"Уведомление о принятии КП #{proposal_id} успешно отправлено менеджеру {MANAGER_ID}")
+        return {"status": "ok", "message": "Notification sent"}
+
+    except Exception as e:
+        logger.error(f"Ошибка при отправке уведомления в Telegram: {e}")
+        raise HTTPException(status_code=500, detail="Не удалось отправить уведомление.")
+
+@app.get("/")
+def read_root():
+    return {"status": "API Server for Smart Proposals is running"}
+
