@@ -62,22 +62,32 @@ def analyze_sales(prompt):
 {prompt}
 """
 
-    try:
+    # Используем цепочку моделей для надежности, начиная с Gemma-3 по просьбе пользователя
+    models_to_try = [
+        "gemma-3-27b-it",
+        "models/gemma-3-27b-it",
+        "gemini-pro", # Более стабильная модель в качестве запасного варианта
+    ]
 
-        response = client.models.generate_content(
-            model="gemini-1.5-flash-latest",
-            contents=analysis_prompt,
-            config=types.GenerateContentConfig(
-                temperature=0.2
+    for model_name in models_to_try:
+        try:
+            logger.info(f"Анализ продаж через модель: {model_name}")
+            response = client.models.generate_content(
+                model=model_name,
+                contents=analysis_prompt,
+                config=types.GenerateContentConfig(
+                    temperature=0.2
+                )
             )
-        )
 
-        data = clean_json(response.text)
+            if response.text:
+                data = clean_json(response.text)
+                if data and "probability" in data:
+                    return data
+            
+        except Exception as e:
+            logger.warning(f"Ошибка модели {model_name} в sales_analyzer: {e}")
+            continue # Пробуем следующую модель
 
-        return data
-
-    except Exception as e:
-
-        logger.error(e)
-
-        return None
+    logger.error("Ни одна из моделей не смогла выполнить анализ продаж.")
+    return None

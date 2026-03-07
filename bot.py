@@ -16,7 +16,6 @@ from utils import ensure_font_exists
 from database import init_db, save_proposal, get_user_history, get_stats
 from sales_analyzer import analyze_sales
 from web_generator import generate_page
-from github_push import push_to_github
 
 load_dotenv()
 
@@ -27,6 +26,7 @@ logging.basicConfig(
 )
 # Подавляем слишком подробные логи от HTTP-клиента, чтобы не светить токен
 logging.getLogger("httpx").setLevel(logging.WARNING)
+logging.getLogger("requests").setLevel(logging.WARNING)
 
 logger = logging.getLogger(__name__)
 
@@ -156,26 +156,23 @@ async def task_info(update: Update, context: ContextTypes.DEFAULT_TYPE) -> int:
             )
             await update.message.reply_text(analysis_text, parse_mode='Markdown')
 
-        # --- ГЕНЕРАЦИЯ, ПУБЛИКАЦИЯ И ОТПРАВКА ССЫЛКИ ---
-        await msg.edit_text("🔗 Генерирую и публикую веб-версию...")
+        # --- ГЕНЕРАЦИЯ И ПУБЛИКАЦИЯ HTML ---
+        await msg.edit_text("🔗 Публикую веб-версию на GitHub Pages...")
         
-        # Генерируем HTML
-        generate_page(
+        await loop.run_in_executor(
+            None,
+            generate_page,
             proposal_id,
             context.user_data.get("about_client"),
             context.user_data.get("task_info"),
             proposal_data
         )
         
-        # Пушим в GitHub
-        push_to_github()
-        
-        # Отправляем ссылку
         web_link = f"https://coolmag.github.io/KPbot/proposals/{proposal_id}.html"
         await update.message.reply_text(
             f"🌐 Онлайн версия КП:\n{web_link}"
         )
-        # -----------------------------------------
+        # ------------------------------------
 
         await msg.edit_text("📄 Формирую PDF...")
         pdf_bytes = await loop.run_in_executor(None, create_proposal_pdf, proposal_data)
