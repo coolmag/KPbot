@@ -13,7 +13,7 @@ from telegram.ext import (
 from ai_service import get_proposal_json
 from pdf_generator import create_proposal_pdf
 from utils import ensure_font_exists
-from database import init_db, save_proposal, get_user_history, get_stats
+from database import init_db, save_proposal, get_user_history, get_stats, update_proposal_with_data
 from sales_analyzer import analyze_sales
 from web_generator import generate_page
 
@@ -121,6 +121,7 @@ async def about_client(update: Update, context: ContextTypes.DEFAULT_TYPE) -> in
 async def task_info(update: Update, context: ContextTypes.DEFAULT_TYPE) -> int:
     context.user_data['task_info'] = update.message.text
     
+    # Этап 1: Создаем запись в БД и получаем ID
     proposal_id = save_proposal(
         update.effective_user.id,
         context.user_data.get("about_client"),
@@ -137,14 +138,18 @@ async def task_info(update: Update, context: ContextTypes.DEFAULT_TYPE) -> int:
 
     loop = asyncio.get_running_loop()
     try:
+        # Этап 2: Генерируем основное КП
         proposal_data = await loop.run_in_executor(None, get_proposal_json, prompt)
-        
-        await msg.edit_text(f"📈 Анализирую сделку (ID: {proposal_id})...")
-        sales_data = await loop.run_in_executor(None, analyze_sales, prompt)
-
         if not proposal_data or "title" not in proposal_data:
             await msg.edit_text("❌ Ошибка генерации основного КП.")
             return ConversationHandler.END
+
+        # Этап 3: Обновляем запись в БД полным JSON-контекстом
+        update_proposal_with_data(proposal_id, proposal_data)
+        
+        # Этап 4: Анализ сделки
+        await msg.edit_text(f"📈 Анализирую сделку (ID: {proposal_id})...")
+        sales_data = await loop.run_in_executor(None, analyze_sales, prompt)
 
         if sales_data:
             analysis_text = (
@@ -156,9 +161,8 @@ async def task_info(update: Update, context: ContextTypes.DEFAULT_TYPE) -> int:
             )
             await update.message.reply_text(analysis_text, parse_mode='Markdown')
 
-        # --- ГЕНЕРАЦИЯ И ПУБЛИКАЦИЯ HTML ---
+        # Этап 5: Генерация и публикация HTML
         await msg.edit_text("🔗 Публикую веб-версию на GitHub Pages...")
-        
         await loop.run_in_executor(
             None,
             generate_page,
@@ -167,13 +171,12 @@ async def task_info(update: Update, context: ContextTypes.DEFAULT_TYPE) -> int:
             context.user_data.get("task_info"),
             proposal_data
         )
-        
         web_link = f"https://coolmag.github.io/KPbot/proposals/{proposal_id}.html"
         await update.message.reply_text(
             f"🌐 Онлайн версия КП:\n{web_link}"
         )
-        # ------------------------------------
 
+        # Этап 6: Формирование и отправка PDF
         await msg.edit_text("📄 Формирую PDF...")
         pdf_bytes = await loop.run_in_executor(None, create_proposal_pdf, proposal_data)
         
@@ -186,12 +189,14 @@ async def task_info(update: Update, context: ContextTypes.DEFAULT_TYPE) -> int:
             )
         else:
             await msg.edit_text("❌ Ошибка при создании PDF.")
+            
     except Exception as e:
-        logger.error(f"Критическая ошибка в `task_info`: {e}")
+        logger.error(f"Критическая ошибка в `task_info`: {e}", exc_info=True)
         await msg.edit_text(f"⚠️ Произошел сбой в системе (ID: {proposal_id}).")
     
-    context.user_data.clear()
-    return ConversationHandler.END
+    finally:
+        context.user_data.clear()
+        return ConversationHandler.END
 
 async def cancel(update: Update, context: ContextTypes.DEFAULT_TYPE) -> int:
     await update.message.reply_text("🚫 Отмена.")

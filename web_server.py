@@ -5,6 +5,9 @@ from fastapi.middleware.cors import CORSMiddleware
 from pydantic import BaseModel
 import requests
 import google.generativeai as genai
+import json
+
+from database import get_proposal_data
 
 # --- CONFIGURATION ---
 BOT_TOKEN = os.getenv("TELEGRAM_BOT_TOKEN")
@@ -49,21 +52,36 @@ def notify(text: str):
         logger.error(f"Ошибка при отправке уведомления в Telegram: {e}")
 
 async def get_ai_answer(question: str, proposal_id: str) -> str:
-    """Асинхронно генерирует ответ на вопрос клиента с помощью AI."""
+    """Асинхронно генерирует ответ на вопрос клиента, используя контекст КП."""
     if not GOOGLE_API_KEY:
         return "AI-чат временно недоступен: не настроен API-ключ."
+    
+    # Получаем полный контекст предложения из БД
+    proposal_context = get_proposal_data(proposal_id)
+    if not proposal_context:
+        return "Не удалось найти детали этого предложения. Пожалуйста, обратитесь к менеджеру."
+
     try:
         model = genai.GenerativeModel('gemini-1.5-flash')
-        prompt = (
-            "Ты — вежливый AI-ассистент по продажам. "
-            "Отвечай кратко, по делу и дружелюбно. "
-            "Если не знаешь ответ, предложи позвать менеджера.\n\n"
-            f"Вопрос клиента по предложению #{proposal_id}: '{question}'"
+        
+        # Создаем супер-промпт с полным контекстом
+        context_prompt = (
+            "Ты — AI-ассистент, эксперт по продажам инженерных систем. "
+            "Твоя задача — отвечать на вопросы клиента, который смотрит коммерческое предложение. "
+            "Используй ТОЛЬКО данные из предоставленного ниже JSON. Не придумывай ничего от себя. "
+            "Отвечай кратко, вежливо и по делу. Если вопрос касается скидок или изменения условий, "
+            "вежливо предложи обсудить это с менеджером.\n\n"
+            "=== КОНТЕКСТ КОММЕРЧЕСКОГО ПРЕДЛОЖЕНИЯ ===\n"
+            f"{json.dumps(proposal_context, indent=2, ensure_ascii=False)}\n\n"
+            "=== ВОПРОС КЛИЕНТА ===\n"
+            f"'{question}'\n\n"
+            "=== ТВОЙ ОТВЕТ: ==="
         )
-        response = await model.generate_content_async(prompt)
+        
+        response = await model.generate_content_async(context_prompt)
         return response.text
     except Exception as e:
-        logger.error(f"Ошибка генерации ответа AI: {e}")
+        logger.error(f"Ошибка генерации ответа AI с контекстом: {e}")
         return "К сожалению, произошла ошибка при обработке вашего вопроса."
 
 # --- API ENDPOINTS ---
@@ -88,5 +106,5 @@ def accept_proposal(id: str):
 
 @app.get("/")
 def read_root():
-    return {"status": "Production API Server v3.0 is running"}
+    return {"status": "Production API Server v4.0 - Contextual AI Ready"}
 
