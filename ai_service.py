@@ -1,94 +1,177 @@
-from google import genai
-from google.genai import types
 import os
 import logging
 import json
 import time
 import re
 
+from google import genai
+from google.genai import types
+
+from models import Proposal
+from boiler_catalog import BOILERS
+
 logger = logging.getLogger(__name__)
 
-def clean_json_response(content: str) -> dict | None:
+
+def clean_json_response(content: str):
     try:
         content = content.replace("```json", "").replace("```", "").strip()
-        start = content.find('{')
-        end = content.rfind('}')
+        start = content.find("{")
+        end = content.rfind("}")
+
         if start != -1 and end != -1:
-            return json.loads(content[start:end+1])
-    except:
-        pass
+            return json.loads(content[start:end + 1])
+
+    except Exception as e:
+        logger.error(f"JSON parse error {e}")
+
     return None
 
-def get_proposal_json(prompt: str) -> dict:
+
+def select_boiler(area):
+    for boiler in BOILERS:
+        if area <= boiler["area_max"]:
+            return boiler
+    return BOILERS[-1]
+
+
+def extract_area(prompt):
+    area_match = re.search(r"(\d+)\s*(кв|м2|метр)", prompt)
+    if not area_match:
+        return None
+    return int(area_match.group(1))
+
+
+def build_prompt(prompt: str):
+    area = extract_area(prompt)
+
+    if area:
+        boiler = select_boiler(area)
+        power = boiler["power"]
+        price = boiler["price"]
+        model = boiler["model"]
+    else:
+        power = 24
+        price = 120000
+        model = "Стандартный котел"
+
+    json_schema = """
+{
+"title": "...",
+"executive_summary": "...",
+"client_pain_points": ["..."],
+"solution_steps": [
+ {"step_name": "...", "description": "..."}
+],
+"plans":[
+ {
+  "name":"Эконом",
+  "description":"...",
+  "budget_items":[
+   {"item":"...", "price":"...", "time":"..."}
+  ]
+ },
+ {
+  "name":"Стандарт",
+  "description":"...",
+  "budget_items":[
+   {"item":"...", "price":"...", "time":"..."}
+  ]
+ },
+ {
+  "name":"Премиум",
+  "description":"...",
+  "budget_items":[
+   {"item":"...", "price":"...", "time":"..."}
+  ]
+ }
+],
+"why_us":"...",
+"cta":"..."
+}
+"""
+
+    full_prompt = f"""
+Ты ведущий инженер отопительных систем.
+
+Составь профессиональное коммерческое предложение.
+
+Дом требует котел {power} кВт.
+Рекомендуемая модель котла: {model}
+Ориентировочная цена: {price} руб.
+
+Сделай 3 варианта решения:
+
+Эконом
+Стандарт
+Премиум
+
+Включи модель котла {model} в один из планов.
+
+Верни ТОЛЬКО JSON.
+
+Схема:
+
+{json_schema}
+
+Запрос клиента:
+
+{prompt}
+"""
+
+    return full_prompt
+
+
+def get_proposal_json(prompt: str):
+
     api_key = os.getenv("GOOGLE_API_KEY")
-    if not api_key: return _get_fallback_data("Нет ключа Google")
+
+    if not api_key:
+        raise Exception("Нет GOOGLE_API_KEY")
 
     client = genai.Client(api_key=api_key)
-    
-    # 1. Расчет мощности
-    power_kw = "24"
-    price_boiler = "120 000"
-    
-    try:
-        area_match = re.search(r'(\d+)\s*(кв|м2|метр)', prompt)
-        if area_match:
-            area = int(area_match.group(1))
-            calc_power = int(area / 10 * 1.2)
-            if calc_power > 40: power_kw = "60"
-            elif calc_power > 30: power_kw = "45"
-            elif calc_power > 24: power_kw = "35"
-            
-            logger.info(f"🧮 {area}м2 -> {power_kw} кВт")
-            
-            if power_kw == "60": price_boiler = "420 000"
-            elif power_kw == "45": price_boiler = "350 000"
-            elif power_kw == "35": price_boiler = "290 000"
-    except: pass
 
-    # 2. Промпт (БЕЗОПАСНАЯ СБОРКА СТРОКИ)
-    json_structure = '{"title": "Название", "executive_summary": "Описание", "client_pain_points": ["..."], "solution_steps": [{"step_name": "...", "description": "..."}], "budget_items": [{"item": "Котел ' + power_kw + ' кВт", "price": "' + price_boiler + ' руб.", "time": "5 дн."}, {"item": "Бойлер", "price": "...", "time": "..."}], "why_us": "...", "cta": "..."}'
-    
-    full_prompt = (
-        "Ты — Главный инженер KOTEL.MSK.RU. Составь JSON смету.\n"
-        f"ВВОДНЫЕ: Дом требует котла {power_kw} кВт (цена ~{price_boiler} руб).\n"
-        "ИНСТРУКЦИЯ:\n"
-        "1. Описание на русском.\n"
-        "2. Исправь ошибки ('конвективы' -> 'конвекторы').\n"
-        "3. Верни ТОЛЬКО JSON по схеме:\n" + json_structure + "\n\n"
-        f"ЗАПРОС: {prompt}"
-    )
+    full_prompt = build_prompt(prompt)
 
-    TARGET_MODELS = ["gemma-3-27b-it", "models/gemma-3-27b-it", "gemini-2.0-flash-exp"]
+    models = [
+        "gemma-3-27b-it",
+        "models/gemma-3-27b-it",
+        "gemini-2.0-flash-exp",
+    ]
 
-    for model_name in TARGET_MODELS:
+    for model in models:
+
         try:
-            logger.info(f"⚡ {model_name} генерирует...")
+
+            logger.info(f"AI generating via {model}")
+
             response = client.models.generate_content(
-                model=model_name,
+                model=model,
                 contents=full_prompt,
-                config=types.GenerateContentConfig(temperature=0.3)
+                config=types.GenerateContentConfig(
+                    temperature=0.3
+                ),
             )
-            
-            if response.text:
-                data = clean_json_response(response.text)
-                if data and "title" in data:
-                    logger.info("✅ Успех!")
-                    return data
-                
+
+            if not response.text:
+                continue
+
+            data = clean_json_response(response.text)
+
+            if not data:
+                continue
+
+            proposal = Proposal(**data)
+
+            return proposal.model_dump()
+
         except Exception as e:
-            logger.warning(f"Error {model_name}: {e}")
-            if "429" in str(e): time.sleep(2)
+
+            logger.warning(e)
+
+            if "429" in str(e):
+                time.sleep(2)
+
             continue
 
-    return _get_fallback_data("Сбой")
-
-def _get_fallback_data(reason: str) -> dict:
-    return {
-        "title": "Смета (Ручной расчет)",
-        "executive_summary": f"Ошибка: {reason}",
-        "client_pain_points": [],
-        "solution_steps": [],
-        "budget_items": [{"item": "-", "price": "-", "time": "-"}],
-        "why_us": "-",
-        "cta": "-"
-    }
+    raise Exception("AI generation failed")

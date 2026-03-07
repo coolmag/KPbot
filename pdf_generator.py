@@ -109,28 +109,38 @@ def create_proposal_pdf(data: dict) -> bytes:
 
     story.append(PageBreak())
 
-    if data.get('budget_items'):
+    if data.get("plans"):
+
         story.append(Paragraph("ИНВЕСТИЦИОННЫЙ РАСЧЕТ", style_h1))
         story.append(Spacer(1, 0.5*cm))
-        table_data = [["НАИМЕНОВАНИЕ", "СРОК", "СТОИМОСТЬ"]]
-        for item in data['budget_items']:
-            table_data.append([
-                Paragraph(item.get('item', ''), style_body),
-                Paragraph(item.get('time', '-'), style_body),
-                Paragraph(f"<b>{item.get('price', '-')}</b>", style_body)
-            ])
-        t = Table(table_data, colWidths=[10*cm, 2.5*cm, 3.5*cm])
-        t.setStyle(TableStyle([
-            ('FONTNAME', (0,0), (-1,-1), font_name),
-            ('BACKGROUND', (0,0), (-1,0), COLOR_PRIMARY),
-            ('TEXTCOLOR', (0,0), (-1,0), colors.white),
-            ('VALIGN', (0,0), (-1,-1), 'TOP'),
-            ('LINEBELOW', (0,0), (-1,0), 2, COLOR_ACCENT),
-            ('LINEBELOW', (0,1), (-1,-1), 0.5, colors.HexColor("#E0E0E0")),
-        ]))
-        story.append(t)
-        story.append(Spacer(1, 0.5*cm))
-        story.append(Paragraph("* Цены указаны ориентировочно.", ParagraphStyle('Note', parent=style_body, fontSize=8, textColor=COLOR_TEXT_LIGHT)))
+
+        for plan in data["plans"]:
+
+            story.append(Paragraph(plan["name"].upper(), style_h1))
+            story.append(Paragraph(plan.get("description", ""), style_body))
+
+            table_data = [["НАИМЕНОВАНИЕ", "СРОК", "СТОИМОСТЬ"]]
+
+            for item in plan["budget_items"]:
+
+                table_data.append([
+                    Paragraph(item.get("item", ""), style_body),
+                    Paragraph(item.get("time", "-"), style_body),
+                    Paragraph(f"<b>{item.get('price', '-')}</b>", style_body)
+                ])
+
+            t = Table(table_data, colWidths=[10*cm, 2.5*cm, 3.5*cm])
+
+            t.setStyle(TableStyle([
+                ('FONTNAME', (0,0), (-1,-1), font_name),
+                ('BACKGROUND', (0,0), (-1,0), COLOR_PRIMARY),
+                ('TEXTCOLOR', (0,0), (-1,0), colors.white),
+                ('VALIGN', (0,0), (-1,-1), 'TOP'),
+                ('LINEBELOW', (0,0), (-1,0), 2, COLOR_ACCENT),
+            ]))
+
+            story.append(t)
+            story.append(Spacer(1, 1*cm))
 
     # --- КОНТАКТНЫЙ БЛОК В КОНЦЕ ---
     story.append(Spacer(1, 1.5*cm))
