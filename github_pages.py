@@ -43,19 +43,22 @@ def upload_page(filename: str, content: str):
     }
 
     try:
-        # Проверяем, существует ли файл, чтобы получить SHA для обновления
-        get_response = requests.get(url, headers=headers)
+        # Проверяем, существует ли файл в ветке gh-pages, чтобы получить SHA для обновления
+        get_response = requests.get(url, headers=headers, params={"ref": "gh-pages"})
         if get_response.status_code == 200:
             data['sha'] = get_response.json()['sha']
-            logger.info(f"Файл {path} существует. Обновляю его.")
+            logger.info(f"Файл {path} существует в ветке gh-pages. Обновляю его.")
         else:
-            logger.info(f"Файл {path} не найден. Создаю новый.")
+            logger.info(f"Файл {path} не найден в ветке gh-pages. Создаю новый.")
+
+        # Указываем ветку gh-pages для коммита
+        data['branch'] = 'gh-pages'
 
         # Отправляем запрос на создание/обновление файла
         response = requests.put(url, json=data, headers=headers)
         response.raise_for_status()  # Вызовет исключение для статусов 4xx/5xx
         
-        logger.info(f"✅ Успешно загружен файл {filename} в репозиторий {OWNER}/{REPO}.")
+        logger.info(f"✅ Успешно загружен файл {filename} в ветку 'gh-pages' репозитория {OWNER}/{REPO}.")
         logger.debug(f"Ответ GitHub API: {response.json()}")
 
     except requests.exceptions.RequestException as e:

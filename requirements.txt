@@ -8,3 +8,5 @@ requests
 
 fastapi
 uvicorn
+celery
+redis

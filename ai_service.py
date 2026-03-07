@@ -1,177 +1,79 @@
 import os
+import re
 import logging
 import json
-import time
-import re
-
 from google import genai
 from google.genai import types
 
-from models import Proposal
+# Импортируем ваши новые файлы
+from models import Proposal 
 from boiler_catalog import BOILERS
 
 logger = logging.getLogger(__name__)
 
+def find_best_boiler(area: int) -> dict:
+    """Простая логика RAG: подбор реального котла из базы по площади"""
+    required_power = (area / 10) * 1.2 # +20% запаса
+    
+    # Ищем подходящий котел, отсортировав каталог по мощности
+    suitable_boilers = sorted([b for b in BOILERS if b['power'] >= required_power], key=lambda x: x['power'])
+    
+    if suitable_boilers:
+        return suitable_boilers[0] # Берем минимально подходящий
+    return BOILERS[-1] # Если дом огромный, берем самый мощный из базы
 
-def clean_json_response(content: str):
-    try:
-        content = content.replace("```json", "").replace("```", "").strip()
-        start = content.find("{")
-        end = content.rfind("}")
-
-        if start != -1 and end != -1:
-            return json.loads(content[start:end + 1])
-
-    except Exception as e:
-        logger.error(f"JSON parse error {e}")
-
-    return None
-
-
-def select_boiler(area):
-    for boiler in BOILERS:
-        if area <= boiler["area_max"]:
-            return boiler
-    return BOILERS[-1]
-
-
-def extract_area(prompt):
-    area_match = re.search(r"(\d+)\s*(кв|м2|метр)", prompt)
-    if not area_match:
-        return None
-    return int(area_match.group(1))
-
-
-def build_prompt(prompt: str):
-    area = extract_area(prompt)
-
-    if area:
-        boiler = select_boiler(area)
-        power = boiler["power"]
-        price = boiler["price"]
-        model = boiler["model"]
-    else:
-        power = 24
-        price = 120000
-        model = "Стандартный котел"
-
-    json_schema = """
-{
-"title": "...",
-"executive_summary": "...",
-"client_pain_points": ["..."],
-"solution_steps": [
- {"step_name": "...", "description": "..."}
-],
-"plans":[
- {
-  "name":"Эконом",
-  "description":"...",
-  "budget_items":[
-   {"item":"...", "price":"...", "time":"..."}
-  ]
- },
- {
-  "name":"Стандарт",
-  "description":"...",
-  "budget_items":[
-   {"item":"...", "price":"...", "time":"..."}
-  ]
- },
- {
-  "name":"Премиум",
-  "description":"...",
-  "budget_items":[
-   {"item":"...", "price":"...", "time":"..."}
-  ]
- }
-],
-"why_us":"...",
-"cta":"..."
-}
-"""
-
-    full_prompt = f"""
-Ты ведущий инженер отопительных систем.
-
-Составь профессиональное коммерческое предложение.
-
-Дом требует котел {power} кВт.
-Рекомендуемая модель котла: {model}
-Ориентировочная цена: {price} руб.
-
-Сделай 3 варианта решения:
-
-Эконом
-Стандарт
-Премиум
-
-Включи модель котла {model} в один из планов.
-
-Верни ТОЛЬКО JSON.
-
-Схема:
-
-{json_schema}
-
-Запрос клиента:
-
-{prompt}
-"""
-
-    return full_prompt
-
-
-def get_proposal_json(prompt: str):
-
+def get_smart_proposal(prompt: str) -> dict | None:
     api_key = os.getenv("GOOGLE_API_KEY")
-
-    if not api_key:
-        raise Exception("Нет GOOGLE_API_KEY")
-
     client = genai.Client(api_key=api_key)
 
-    full_prompt = build_prompt(prompt)
+    # 1. Пытаемся вытащить площадь из запроса (как было у вас)
+    area = 100 # по умолчанию
+    area_match = re.search(r'(\d+)\s*(кв|м2|метр)', prompt)
+    if area_match:
+        area = int(area_match.group(1))
 
-    models = [
-        "gemma-3-27b-it",
-        "models/gemma-3-27b-it",
-        "gemini-2.0-flash-exp",
-    ]
+    # 2. ПОДБОР ИЗ КАТАЛОГА (RAG)
+    selected_boiler = find_best_boiler(area)
+    logger.info(f"✅ Выбран котел из базы: {selected_boiler['model']} за {selected_boiler['price']} руб.")
 
-    for model in models:
+    # 3. Формируем умный промпт с передачей реальных данных
+    system_instruction = (
+        "Ты — Главный инженер и менеджер по продажам KOTEL.MSK.RU.
+"
+        "Твоя задача составить детальное коммерческое предложение.
+"
+        "ОБЯЗАТЕЛЬНЫЕ УСЛОВИЯ:
+"
+        f"- Используй СТРОГО следующее оборудование: {selected_boiler['model']} ({selected_boiler['power']} кВт).
+"
+        f"- Цена котла: {selected_boiler['price']} руб. Добавь к этому стоимость монтажа и труб.
+"
+        "- Разбей предложение на 2-3 тарифа (Плана), например: 'Базовый', 'Оптимальный', 'Премиум'.
+"
+        "- Сначала напиши свои рассуждения в поле 'internal_reasoning', а затем заполни схему.
+"
+    )
 
-        try:
+    # Добавляем фиктивное поле internal_reasoning, чтобы заставить модель "думать" перед ответом
+    # Google GenAI SDK позволяет передать Pydantic модель прямо в response_schema
+    # Это гарантирует 100% валидный JSON
+    try:
+        response = client.models.generate_content(
+            model='gemma-3-27b-it',
+            contents=system_instruction + f"
 
-            logger.info(f"AI generating via {model}")
+ЗАПРОС ОТ МЕНЕДЖЕРА: {prompt}",
+            config=types.GenerateContentConfig(
+                response_mime_type="application/json",
+                # Мы просим вернуть JSON, соответствующий вашей модели Proposal (из models.py)
+                response_schema=Proposal, 
+                temperature=0.4
+            ),
+        )
 
-            response = client.models.generate_content(
-                model=model,
-                contents=full_prompt,
-                config=types.GenerateContentConfig(
-                    temperature=0.3
-                ),
-            )
-
-            if not response.text:
-                continue
-
-            data = clean_json_response(response.text)
-
-            if not data:
-                continue
-
-            proposal = Proposal(**data)
-
-            return proposal.model_dump()
-
-        except Exception as e:
-
-            logger.warning(e)
-
-            if "429" in str(e):
-                time.sleep(2)
-
-            continue
-
-    raise Exception("AI generation failed")
+        if response.text:
+            logger.info("✅ Успешная генерация!")
+            return json.loads(response.text)
+    except Exception as e:
+        logger.error(f"Сбой генерации: {e}")
+        return None

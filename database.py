@@ -2,13 +2,20 @@ import sqlite3
 import datetime
 from pathlib import Path
 import json
+import os
 
-DB_PATH = Path("proposals.db")
-
+# Если мы на Railway (есть переменная RAILWAY_ENVIRONMENT), используем папку /data
+# Иначе (на локальном ПК) создаем файл прямо в папке проекта
+if os.getenv("RAILWAY_ENVIRONMENT"):
+    DB_PATH = Path("/data/proposals.db")
+else:
+    DB_PATH = Path("proposals.db")
 
 def init_db():
     conn = sqlite3.connect(DB_PATH)
     cursor = conn.cursor()
+    
+    # Обновленная таблица предложений с версионированием
     cursor.execute("""
     CREATE TABLE IF NOT EXISTS proposals (
         id INTEGER PRIMARY KEY AUTOINCREMENT,
@@ -16,12 +23,40 @@ def init_db():
         client TEXT,
         task TEXT,
         created_at TEXT,
-        proposal_data TEXT
+        proposal_data TEXT,
+        version INTEGER DEFAULT 1
+    )
+    """)
+    
+    # НОВАЯ ТАБЛИЦА: Система событий (Events)
+    cursor.execute("""
+    CREATE TABLE IF NOT EXISTS events (
+        id INTEGER PRIMARY KEY AUTOINCREMENT,
+        proposal_id INTEGER,
+        event_type TEXT, -- 'opened', 'scrolled', 'plan_clicked', 'ai_question', 'accepted'
+        timestamp TEXT,
+        metadata TEXT,   -- JSON с деталями (например, глубиной скролла или выбранным тарифом)
+        FOREIGN KEY(proposal_id) REFERENCES proposals(id)
     )
     """)
     conn.commit()
     conn.close()
 
+def log_event(proposal_id: str, event_type: str, metadata: dict = None):
+    """Функция для записи любого действия клиента"""
+    conn = sqlite3.connect(DB_PATH)
+    cursor = conn.cursor()
+    cursor.execute("""
+    INSERT INTO events (proposal_id, event_type, timestamp, metadata)
+    VALUES (?, ?, ?, ?)
+    """, (
+        proposal_id, 
+        event_type, 
+        datetime.datetime.now().isoformat(), 
+        json.dumps(metadata) if metadata else "{}"
+    ))
+    conn.commit()
+    conn.close()
 
 def save_proposal(user_id, client, task):
     """Сохраняет первоначальную информацию о лиде и возвращает ID."""

@@ -10,12 +10,10 @@ from telegram.ext import (
     ContextTypes, ConversationHandler
 )
 
-from ai_service import get_proposal_json
-from pdf_generator import create_proposal_pdf
-from utils import ensure_font_exists
-from database import init_db, save_proposal, get_user_history, get_stats, update_proposal_with_data
-from sales_analyzer import analyze_sales
-from web_generator import generate_page
+# Импорт для фоновых задач
+from celery_worker import task_generate_proposal
+# Утилиты для работы с БД, которые все еще нужны боту
+from database import init_db, save_proposal, get_user_history, get_stats
 
 load_dotenv()
 
@@ -121,82 +119,33 @@ async def about_client(update: Update, context: ContextTypes.DEFAULT_TYPE) -> in
 async def task_info(update: Update, context: ContextTypes.DEFAULT_TYPE) -> int:
     context.user_data['task_info'] = update.message.text
     
-    # Этап 1: Создаем запись в БД и получаем ID
+    client_name = context.user_data.get("about_client", "Клиент")
+    task_text = context.user_data.get("task_info")
+    user_id = update.effective_user.id
+
+    # Этап 1: Создаем первоначальную запись в БД и получаем ID
     proposal_id = save_proposal(
-        update.effective_user.id,
-        context.user_data.get("about_client"),
-        context.user_data.get("task_info")
+        user_id,
+        client_name,
+        task_text
     )
 
-    msg = await update.message.reply_text(f"⏳ Проектирую решение (ID: {proposal_id})...")
-
-    prompt = (
-        f"Исполнитель: {context.user_data.get('about_you')}\n"
-        f"Клиент: {context.user_data.get('about_client')}\n"
-        f"Задача: {context.user_data.get('task_info')}"
-    )
-
-    loop = asyncio.get_running_loop()
-    try:
-        # Этап 2: Генерируем основное КП
-        proposal_data = await loop.run_in_executor(None, get_proposal_json, prompt)
-        if not proposal_data or "title" not in proposal_data:
-            await msg.edit_text("❌ Ошибка генерации основного КП.")
-            return ConversationHandler.END
-
-        # Этап 3: Обновляем запись в БД полным JSON-контекстом
-        update_proposal_with_data(proposal_id, proposal_data)
-        
-        # Этап 4: Анализ сделки
-        await msg.edit_text(f"📈 Анализирую сделку (ID: {proposal_id})...")
-        sales_data = await loop.run_in_executor(None, analyze_sales, prompt)
-
-        if sales_data:
-            analysis_text = (
-                f"📊 AI анализ сделки (ID: {proposal_id})\n\n"
-                f"**Вероятность:** {sales_data.get('probability', 'N/A')}\n"
-                f"**Бюджет:** {sales_data.get('budget_level', 'N/A')}\n\n"
-                f"**Проблема клиента:**\n_{sales_data.get('client_problem', 'N/A')}_\n\n"
-                f"**💡 Совет менеджеру:**\n_{sales_data.get('manager_tip', 'N/A')}_"
-            )
-            await update.message.reply_text(analysis_text, parse_mode='Markdown')
-
-        # Этап 5: Генерация и публикация HTML
-        await msg.edit_text("🔗 Публикую веб-версию на GitHub Pages...")
-        await loop.run_in_executor(
-            None,
-            generate_page,
-            proposal_id,
-            context.user_data.get("about_client"),
-            context.user_data.get("task_info"),
-            proposal_data
-        )
-        web_link = f"https://coolmag.github.io/KPbot/proposals/{proposal_id}.html"
-        await update.message.reply_text(
-            f"🌐 Онлайн версия КП:\n{web_link}"
-        )
-
-        # Этап 6: Формирование и отправка PDF
-        await msg.edit_text("📄 Формирую PDF...")
-        pdf_bytes = await loop.run_in_executor(None, create_proposal_pdf, proposal_data)
-        
-        if pdf_bytes:
-            filename = f"KP_{proposal_id}_{context.user_data.get('about_client', 'Client')[:10]}.pdf"
-            await update.message.reply_document(
-                document=pdf_bytes, 
-                filename=filename, 
-                caption=f"✅ Готово! ID проекта: {proposal_id}"
-            )
-        else:
-            await msg.edit_text("❌ Ошибка при создании PDF.")
-            
-    except Exception as e:
-        logger.error(f"Критическая ошибка в `task_info`: {e}", exc_info=True)
-        await msg.edit_text(f"⚠️ Произошел сбой в системе (ID: {proposal_id}).")
+    # Этап 2: Отправляем "тяжелую" задачу на генерацию в Celery и НЕ ждем ее выполнения.
+    # Воркер сам обновит запись в БД, сгенерирует и загрузит HTML.
+    task_generate_proposal.delay(proposal_id, client_name, task_text)
     
-    finally:
-        context.user_data.clear()
-        return ConversationHandler.END
+    # Этап 3: Моментально отвечаем пользователю, что задача принята.
+    web_link = f"https://coolmag.github.io/KPbot/proposals/{proposal_id}.html"
+    
+    await update.message.reply_text(
+        f"✅ Принято! ID проекта: {proposal_id}\n\n"
+        f"AI-генератор уже начал работу. "
+        f"Онлайн-версия КП будет доступна через 1-2 минуты по ссылке:\n{web_link}"
+    )
+    
+    # Завершаем диалог
+    context.user_data.clear()
+    return ConversationHandler.END
 
 async def cancel(update: Update, context: ContextTypes.DEFAULT_TYPE) -> int:
     await update.message.reply_text("🚫 Отмена.")

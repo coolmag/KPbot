@@ -1,13 +1,15 @@
 import os
 import logging
+import json
+import requests
 from fastapi import FastAPI
 from fastapi.middleware.cors import CORSMiddleware
 from pydantic import BaseModel
-import requests
-import google.generativeai as genai
-import json
+from google import genai
+from google.genai import types
 
-from database import get_proposal_data
+from database import get_proposal_data, log_event
+from celery_worker import task_generate_proposal
 
 # --- CONFIGURATION ---
 BOT_TOKEN = os.getenv("TELEGRAM_BOT_TOKEN")
@@ -17,6 +19,11 @@ GOOGLE_API_KEY = os.getenv("GOOGLE_API_KEY")
 logger = logging.getLogger(__name__)
 
 # --- MODELS ---
+class TrackEvent(BaseModel):
+    proposal_id: str
+    event_type: str
+    metadata: dict = None
+
 class Question(BaseModel):
     question: str
     proposal_id: str
@@ -33,9 +40,6 @@ app.add_middleware(
     allow_headers=["*"],
 )
 
-if GOOGLE_API_KEY:
-    genai.configure(api_key=GOOGLE_API_KEY)
-
 # --- HELPER FUNCTIONS ---
 def notify(text: str):
     """Синхронно отправляет уведомление в Telegram."""
@@ -51,60 +55,75 @@ def notify(text: str):
     except requests.exceptions.RequestException as e:
         logger.error(f"Ошибка при отправке уведомления в Telegram: {e}")
 
-async def get_ai_answer(question: str, proposal_id: str) -> str:
-    """Асинхронно генерирует ответ на вопрос клиента, используя контекст КП."""
-    if not GOOGLE_API_KEY:
-        return "AI-чат временно недоступен: не настроен API-ключ."
-    
-    # Получаем полный контекст предложения из БД
-    proposal_context = get_proposal_data(proposal_id)
-    if not proposal_context:
-        return "Не удалось найти детали этого предложения. Пожалуйста, обратитесь к менеджеру."
-
-    try:
-        model = genai.GenerativeModel('gemini-1.5-flash')
-        
-        # Создаем супер-промпт с полным контекстом
-        context_prompt = (
-            "Ты — AI-ассистент, эксперт по продажам инженерных систем. "
-            "Твоя задача — отвечать на вопросы клиента, который смотрит коммерческое предложение. "
-            "Используй ТОЛЬКО данные из предоставленного ниже JSON. Не придумывай ничего от себя. "
-            "Отвечай кратко, вежливо и по делу. Если вопрос касается скидок или изменения условий, "
-            "вежливо предложи обсудить это с менеджером.\n\n"
-            "=== КОНТЕКСТ КОММЕРЧЕСКОГО ПРЕДЛОЖЕНИЯ ===\n"
-            f"{json.dumps(proposal_context, indent=2, ensure_ascii=False)}\n\n"
-            "=== ВОПРОС КЛИЕНТА ===\n"
-            f"'{question}'\n\n"
-            "=== ТВОЙ ОТВЕТ: ==="
-        )
-        
-        response = await model.generate_content_async(context_prompt)
-        return response.text
-    except Exception as e:
-        logger.error(f"Ошибка генерации ответа AI с контекстом: {e}")
-        return "К сожалению, произошла ошибка при обработке вашего вопроса."
-
 # --- API ENDPOINTS ---
+@app.post("/track")
+def track_client_action(event: TrackEvent):
+    """Сбор Heatmap и событий"""
+    log_event(event.proposal_id, event.event_type, event.metadata)
+    
+    # AI Co-pilot: уведомляем менеджера о важных шагах
+    if event.event_type == "scrolled_80":
+        notify(f"🔥 Клиент долистал КП `#{event.proposal_id}` до конца!")
+    elif event.event_type == "plan_clicked":
+        plan_name = event.metadata.get("plan_name", "")
+        notify(f"💰 Клиент кликнул на тариф **{plan_name}** в КП `#{event.proposal_id}`!")
+        
+    return {"status": "ok"}
+
 @app.post("/ai")
 async def ai_chat(q: Question):
-    logger.info(f"AI-чат (КП #{q.proposal_id}): '{q.question}'")
-    notify(f"💬 Вопрос по КП `#{q.proposal_id}`:\n_{q.question}_")
-    answer = await get_ai_answer(q.question, q.proposal_id)
-    return {"answer": answer}
+    """Умный AI-помощник: Общение + Пересчет КП"""
+    log_event(q.proposal_id, "ai_question", {"question": q.question})
+    notify(f"💬 Вопрос по КП `#{q.proposal_id}`:
+_{q.question}_")
+    
+    current_kp = get_proposal_data(q.proposal_id)
+    
+    prompt = f"""
+    Ты - AI инженер по продажам. Клиент задал вопрос по коммерческому предложению (ID: {q.proposal_id}).
+    Текущие данные КП: {json.dumps(current_kp, ensure_ascii=False)[:500]}...
+    Вопрос клиента: "{q.question}"
 
-@app.get("/view")
-def view_proposal(id: str):
-    logger.info(f"Отмечен просмотр КП #{id}")
-    notify(f"👀 Клиент открыл КП `#{id}`")
-    return {"ok": True}
-
-@app.get("/accept")
-def accept_proposal(id: str):
-    logger.info(f"Получен запрос на принятие КП #{id}")
-    notify(f"🔥 **Сделка принята!**\nКлиент принял коммерческое предложение `ID: {id}`.")
-    return {"ok": True}
+    ПРАВИЛА:
+    1. Если клиент просто задает вопрос (например, "Шумный ли котел?") -> ответь вежливо.
+    2. Если клиент просит изменить условия (площадь, другой котел, добавить теплый пол) -> верни команду на пересчет.
+    
+    Верни СТРОГО JSON:
+    {{
+        "action": "chat" или "recalculate",
+        "reply_text": "твой ответ клиенту",
+        "new_task_context": "если action=recalculate, напиши сюда новое ТЗ для генератора (например: Дом 200м2, нужен теплый пол), иначе null"
+    }}
+    """
+    
+    try:
+        client = genai.Client(api_key=GOOGLE_API_KEY)
+        response = await client.aio.models.generate_content(
+            model='gemma-3-27b-it',
+            contents=prompt,
+            config=types.GenerateContentConfig(response_mime_type="application/json")
+        )
+        ai_decision = json.loads(response.text)
+        
+        if ai_decision.get("action") == "recalculate":
+            new_task = ai_decision.get("new_task_context")
+            if new_task:
+                task_generate_proposal.delay(int(q.proposal_id), current_kp.get('client_name', 'Клиент'), new_task)
+                log_event(q.proposal_id, "recalculation_triggered", {"new_task": new_task})
+                notify(f"🔄 **Клиент запустил пересчет КП #{q.proposal_id}!**
+Новое ТЗ: {new_task}")
+                
+                return {
+                    "answer": ai_decision.get("reply_text", "Принял. Пересчитываю...") + " Страница обновится через 15-20 секунд.",
+                    "action": "recalculate"
+                }
+        
+        return {"answer": ai_decision.get("reply_text", "Не совсем понял, сейчас позову менеджера."), "action": "chat"}
+        
+    except Exception as e:
+        logger.error(f"AI decision processing error: {e}")
+        return {"answer": "Ой, я немного запутался. Менеджер скоро свяжется с вами!", "action": "error"}
 
 @app.get("/")
 def read_root():
-    return {"status": "Production API Server v4.0 - Contextual AI Ready"}
-
+    return {"status": "Production API Server v5.0 - Interactive AI & Celery Ready"}
