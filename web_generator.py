@@ -39,7 +39,7 @@ def generate_page(proposal_id: str, client: str, task: str, proposal_data: dict)
     )
 
     # 4. Сохраняем и загружаем на GitHub (через ваш github_pages.py)
-    file_path = f"proposals/{proposal_id}.html"
+    file_path = f"{proposal_id}.html"
     upload_page(file_path, final_html)
     
     return True
