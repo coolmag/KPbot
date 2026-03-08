@@ -16,11 +16,15 @@ celery_app = Celery('tasks', broker=redis_url, backend=redis_url)
 def task_send_result(chat_id: int, proposal_id: int, web_url: str, pdf_filename: str):
     bot_token = os.getenv("TELEGRAM_BOT_TOKEN")
     
-    # 🛠️ ИСПРАВЛЕНИЕ ЗДЕСЬ: Текст собран в одну безопасную строку
-    msg_text = f"✅ Готово! Проект #{proposal_id}
+    # 🟢 БЕЗОПАСНЫЙ ФОРМАТ СТРОКИ (Специально разбит на короткие части)
+    msg_text = (
+        f"✅ Готово! Проект #{proposal_id}
 
-🌐 Инженерная схема и смета: {web_url}
-📄 Строгий PDF для печати прикреплен ниже 👇"
+"
+        f"🌐 Инженерная схема и смета: {web_url}
+"
+        f"📄 Строгий PDF для печати прикреплен ниже 👇"
+    )
     
     # 1. Отправляем текст и ссылку
     requests.post(f"https://api.telegram.org/bot{bot_token}/sendMessage", json={
@@ -36,7 +40,7 @@ def task_send_result(chat_id: int, proposal_id: int, web_url: str, pdf_filename:
                 "chat_id": chat_id
             }, files={"document": f})
         
-        # 3. Удаляем PDF после отправки, чтобы не забивать память
+        # 3. Удаляем PDF после отправки
         os.remove(pdf_filename) 
     return True
 
@@ -47,19 +51,14 @@ def task_generate_proposal(proposal_id: int, client: str, task: str, chat_id: in
     proposal_data = get_smart_proposal(task)
     
     if proposal_data:
-        # Сохраняем в БД
         update_proposal_with_data(proposal_id, proposal_data)
-        
-        # Генерируем сайт-чертеж
         generate_page(proposal_id, client, task, proposal_data)
         
-        # Генерируем строгий PDF
         pdf_filename = f"proposal_{proposal_id}.pdf"
         generate_pdf(proposal_data, pdf_filename, str(proposal_id))
         
         web_url = f"https://coolmag.github.io/KPbot/proposals/{proposal_id}.html"
         
-        # Отправляем сообщение через 10 секунд (чтобы GitHub Pages успел обновить кэш)
         task_send_result.apply_async(args=[chat_id, proposal_id, web_url, pdf_filename], countdown=10)
         
         print(f"✅ [Worker] КП #{proposal_id} сгенерировано. Отправка клиенту через 10 секунд...")
