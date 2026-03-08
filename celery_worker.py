@@ -37,10 +37,10 @@ def task_generate_proposal(proposal_id: int, client: str, task: str, chat_id: in
         # Отправляем текст со ссылкой
         requests.post(f"https://api.telegram.org/bot{bot_token}/sendMessage", json={
             "chat_id": chat_id,
-            "text": f"✅ Готово! Проект #{proposal_id}
+            "text": f"""✅ Готово! Проект #{proposal_id}
 
 🌐 Интерактивная 3D-версия: {web_url}
-📄 PDF-версия для печати прикреплена ниже 👇",
+📄 PDF-версия для печати прикреплена ниже 👇""",
             "parse_mode": "HTML"
         })
         
