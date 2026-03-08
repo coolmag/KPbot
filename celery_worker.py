@@ -28,7 +28,7 @@ def task_generate_proposal(proposal_id: int, client: str, task: str, chat_id: in
         
         # 3. ДЕЛАЕМ PDF-ВЕРСИЮ
         pdf_filename = f"proposal_{proposal_id}.pdf"
-        generate_pdf(proposal_data, pdf_filename) # Вызываем вашу старую добрую функцию
+        generate_pdf(proposal_data, pdf_filename, str(proposal_id)) # Вызываем вашу старую добрую функцию
         
         # 4. Отправляем результаты обратно менеджеру в Telegram (через API)
         bot_token = os.getenv("TELEGRAM_BOT_TOKEN")
