@@ -74,8 +74,7 @@ def track_client_action(event: TrackEvent):
 async def ai_chat(q: Question):
     """Умный AI-помощник: Общение + Пересчет КП"""
     log_event(q.proposal_id, "ai_question", {"question": q.question})
-    notify(f"💬 Вопрос по КП `#{q.proposal_id}`:
-_{q.question}_")
+    notify(f"💬 Вопрос по КП `#{q.proposal_id}`:\n_{q.question}_")
     
     current_kp = get_proposal_data(q.proposal_id)
     
@@ -110,8 +109,7 @@ _{q.question}_")
             if new_task:
                 task_generate_proposal.delay(int(q.proposal_id), current_kp.get('client_name', 'Клиент'), new_task)
                 log_event(q.proposal_id, "recalculation_triggered", {"new_task": new_task})
-                notify(f"🔄 **Клиент запустил пересчет КП #{q.proposal_id}!**
-Новое ТЗ: {new_task}")
+                notify(f"🔄 **Клиент запустил пересчет КП #{q.proposal_id}!**\nНовое ТЗ: {new_task}")
                 
                 return {
                     "answer": ai_decision.get("reply_text", "Принял. Пересчитываю...") + " Страница обновится через 15-20 секунд.",
