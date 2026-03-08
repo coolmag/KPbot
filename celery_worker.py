@@ -16,18 +16,14 @@ celery_app = Celery('tasks', broker=redis_url, backend=redis_url)
 def task_send_result(chat_id: int, proposal_id: int, web_url: str, pdf_filename: str):
     bot_token = os.getenv("TELEGRAM_BOT_TOKEN")
     
-    # 🟢 БЕЗОПАСНЫЙ ФОРМАТ СТРОКИ (Специально разбит на короткие части)
-    msg_text = (
-        f"✅ Готово! Проект #{proposal_id}
-
-"
-        f"🌐 Инженерная схема и смета: {web_url}
-"
-        f"📄 Строгий PDF для печати прикреплен ниже 👇"
-    )
+    # 🟢 ЖЕЛЕЗОБЕТОННЫЙ ФОРМАТ: обычное сложение строк
+    part1 = "✅ Готово! Проект #" + str(proposal_id) + "\n\n"
+    part2 = "🌐 Инженерная схема и смета: " + str(web_url) + "\n"
+    part3 = "📄 Строгий PDF для печати прикреплен ниже 👇"
+    msg_text = part1 + part2 + part3
     
     # 1. Отправляем текст и ссылку
-    requests.post(f"https://api.telegram.org/bot{bot_token}/sendMessage", json={
+    requests.post("https://api.telegram.org/bot" + str(bot_token) + "/sendMessage", json={
         "chat_id": chat_id,
         "text": msg_text,
         "parse_mode": "HTML"
@@ -36,7 +32,7 @@ def task_send_result(chat_id: int, proposal_id: int, web_url: str, pdf_filename:
     # 2. Отправляем PDF
     if os.path.exists(pdf_filename):
         with open(pdf_filename, "rb") as f:
-            requests.post(f"https://api.telegram.org/bot{bot_token}/sendDocument", data={
+            requests.post("https://api.telegram.org/bot" + str(bot_token) + "/sendDocument", data={
                 "chat_id": chat_id
             }, files={"document": f})
         
