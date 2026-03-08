@@ -1,0 +1,364 @@
+<!DOCTYPE html>
+<html lang="ru" class="dark">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Интерактивный проект | KOTEL.MSK</title>
+    <script src="https://cdn.tailwindcss.com"></script>
+    <link href="https://fonts.googleapis.com/css2?family=Outfit:wght@300;400;600;800&display=swap" rel="stylesheet">
+    
+    <!-- Подключаем 3D-движок от Google (Model Viewer) -->
+    <script type="module" src="https://ajax.googleapis.com/ajax/libs/model-viewer/3.3.0/model-viewer.min.js"></script>
+
+    <script>
+        tailwind.config = { theme: { extend: { fontFamily: { sans: ['Outfit', 'sans-serif'] }, colors: { gold: '#C5A059', dark: '#0B0F19' } } } }
+    </script>
+    <style>
+        body { background-color: #0B0F19; color: #ffffff; overflow-x: hidden; }
+        .glass-panel { background: rgba(255, 255, 255, 0.02); backdrop-filter: blur(20px); border: 1px solid rgba(255, 255, 255, 0.05); }
+        .gold-text { background: linear-gradient(90deg, #FFFFFF 0%, #C5A059 100%); -webkit-background-clip: text; -webkit-text-fill-color: transparent; }
+        
+        /* 3D Контейнер */
+        model-viewer { width: 100%; height: 500px; outline: none; --poster-color: transparent; }
+        
+        /* Анимация голосового ассистента */
+        .ai-orb {
+            width: 80px; height: 80px; border-radius: 50%;
+            background: radial-gradient(circle, #C5A059 0%, #0B0F19 80%);
+            box-shadow: 0 0 30px rgba(197, 160, 89, 0.4);
+            transition: all 0.3s ease;
+            cursor: pointer;
+            display: flex; align-items: center; justify-content: center;
+        }
+        .ai-orb.listening { animation: pulse-listen 1.5s infinite; background: radial-gradient(circle, #ff4757 0%, #0B0F19 80%); box-shadow: 0 0 50px rgba(255, 71, 87, 0.6); }
+        .ai-orb.thinking { animation: spin-think 2s linear infinite; border: 2px dashed #C5A059; background: transparent; }
+        
+        @keyframes pulse-listen { 0% { transform: scale(1); } 50% { transform: scale(1.15); } 100% { transform: scale(1); } }
+        @keyframes spin-think { 100% { transform: rotate(360deg); } }
+        
+        @keyframes reveal { from { opacity: 0; transform: translateY(40px); } to { opacity: 1; transform: translateY(0); } }
+        .animate-reveal { animation: reveal 1s cubic-bezier(0.16, 1, 0.3, 1) forwards; opacity: 0; }
+    </style>
+    <!-- Mermaid.js (Правильное подключение модуля) -->
+    <script type="module">
+        import mermaid from 'https://cdn.jsdelivr.net/npm/mermaid@10/dist/mermaid.esm.min.mjs';
+        mermaid.initialize({ startOnLoad: true, theme: 'dark' });
+    </script>
+</head>
+<body onload="initPage('16')">
+
+<div class="max-w-7xl mx-auto px-6 pt-16 pb-32">
+    
+    <div class="text-center animate-reveal">
+        <h1 class="text-5xl font-extrabold mb-4">Проект котельной <span class="gold-text">#16</span></h1>
+        <p class="text-xl text-slate-400">Объект: лЮДИ</p>
+    </div>
+
+    <!-- Кнопка скачивания PDF -->
+    <div class="mt-12 text-center animate-reveal delay-2">
+        <a href="#" onclick="alert('Функция скачивания PDF временно недоступна, пока мы не зальем PDF на GitHub. Но менеджер уже выслал его вам в Telegram!'); return false;" 
+           class="inline-flex items-center gap-3 bg-white/5 border border-white/10 hover:border-gold/50 hover:bg-gold/10 text-white px-8 py-4 rounded-2xl font-semibold transition-all duration-300 group">
+            <svg class="w-6 h-6 text-red-500 group-hover:text-gold transition-colors" fill="currentColor" viewBox="0 0 24 24"><path d="M12 16l-5-5h3V4h4v7h3l-5 5zm9-2v6H3v-6H1v8h22v-8h-2z"></path></svg>
+            Скачать смету в PDF
+            <span class="text-xs font-normal text-slate-400 ml-2 border-l border-white/10 pl-4">Для распечатки и бухгалтерии</span>
+        </a>
+    </div>
+
+
+
+    <!-- БЛОК 0: 3D МОДЕЛЬ -->
+    <div class="mt-16 glass-panel rounded-[2rem] p-8 animate-reveal relative overflow-hidden" style="animation-delay: 0.1s;">
+        <h2 class="text-3xl font-bold mb-2 mt-4 text-center">Интерактивная 3D-модель</h2>
+        <p class="text-center text-slate-400 mb-8 text-sm">Вращайте модель для осмотра оборудования (демонстрационная модель)</p>
+        <model-viewer src="https://modelviewer.dev/shared-assets/models/NeilArmstrong.glb" 
+                      auto-rotate camera-controls shadow-intensity="1"
+                      alt="3D модель оборудования">
+        </model-viewer>
+    </div>
+
+    <!-- БЛОК 1: ИНЖЕНЕРНАЯ СХЕМА -->
+    <div class="mt-16 glass-panel rounded-[2rem] p-8 animate-reveal relative overflow-hidden" style="animation-delay: 0.2s;">
+        <div class="absolute top-4 left-6 bg-blue-500/10 text-blue-400 border border-blue-500/20 px-4 py-1 rounded-full text-xs font-bold uppercase tracking-widest z-10">
+            AI-Проектирование
+        </div>
+        
+        <h2 class="text-3xl font-bold mb-2 mt-8 text-center">Гидравлическая схема</h2>
+        <p class="text-center text-slate-400 mb-8 text-sm">Сгенерировано нейросетью на основе параметров объекта</p>
+        
+        <!-- Окно чертежа -->
+        <div class="bg-black/40 border border-white/5 rounded-2xl p-6 overflow-x-auto">
+            <div class="mermaid text-center" style="min-height: 300px;">
+                graph TD; Котел-->Гидрострелка; Гидрострелка-->КоллекторРадиаторы; Гидрострелка-->КоллекторТП; Котел-->НасосЗагрузкиБКН; НасосЗагрузкиБКН-->БКН; БКН-->КоллекторГВС; КоллекторРадиаторы-->НасосРадиаторы; КоллекторТП-->НасосТП; КоллекторГВС-->НасосГВС; Котел-->ГруппаБезопасностиКотел; БКН-->ГруппаБезопасностиБКН; РасширительныйБакОтопление-->Гидрострелка; РасширительныйБакГВС-->БКН; ЗапорнаяАрматураКотел-->Котел; ЗапорнаяАрматураГидрострелка-->Гидрострелка; ЗапорнаяАрматураБКН-->БКН;
+            </div>
+        </div>
+    </div>
+
+    <!-- БЛОК 2: ТАРИФЫ -->
+    <div class="mt-16 animate-reveal" style="animation-delay: 0.4s;">
+        <h2 class="text-3xl font-bold mb-8 text-center">Конфигурации системы</h2>
+        <div class="grid md:grid-cols-3 gap-8">
+            
+            <div class="glass-panel p-6 rounded-2xl flex flex-col cursor-pointer transition-all duration-300 hover:border-gold/50" onclick="selectPlan('Базовый')">
+                <h3 class="text-2xl font-bold text-gold mb-2">Базовый</h3>
+                <p class="text-sm text-slate-400 mb-6">Стандартный план, обеспечивающий надежное отопление и горячее водоснабжение для дома площадью 300 кв.м.</p>
+                <div class="flex-grow">
+                    <ul class="space-y-3 mb-6">
+                        
+                        <li class="flex justify-between text-sm border-b border-white/5 pb-2">
+                            <span class="text-slate-300">Котел Protherm Гепард 23 MTV</span>
+                            <span class="font-semibold">111800 руб.</span>
+                        </li>
+                        
+                        <li class="flex justify-between text-sm border-b border-white/5 pb-2">
+                            <span class="text-slate-300">Гидроразделитель</span>
+                            <span class="font-semibold">15000 руб.</span>
+                        </li>
+                        
+                        <li class="flex justify-between text-sm border-b border-white/5 pb-2">
+                            <span class="text-slate-300">Коллекторная группа (отопление)</span>
+                            <span class="font-semibold">12000 руб.</span>
+                        </li>
+                        
+                        <li class="flex justify-between text-sm border-b border-white/5 pb-2">
+                            <span class="text-slate-300">Коллекторная группа (ГВС)</span>
+                            <span class="font-semibold">8000 руб.</span>
+                        </li>
+                        
+                        <li class="flex justify-between text-sm border-b border-white/5 pb-2">
+                            <span class="text-slate-300">Бойлер косвенного нагрева 150л</span>
+                            <span class="font-semibold">25000 руб.</span>
+                        </li>
+                        
+                        <li class="flex justify-between text-sm border-b border-white/5 pb-2">
+                            <span class="text-slate-300">Насос загрузки бойлера</span>
+                            <span class="font-semibold">8000 руб.</span>
+                        </li>
+                        
+                        <li class="flex justify-between text-sm border-b border-white/5 pb-2">
+                            <span class="text-slate-300">Циркуляционный насос (отопление)</span>
+                            <span class="font-semibold">7000 руб.</span>
+                        </li>
+                        
+                        <li class="flex justify-between text-sm border-b border-white/5 pb-2">
+                            <span class="text-slate-300">Циркуляционный насос (ТП)</span>
+                            <span class="font-semibold">7000 руб.</span>
+                        </li>
+                        
+                        <li class="flex justify-between text-sm border-b border-white/5 pb-2">
+                            <span class="text-slate-300">Циркуляционный насос (ГВС)</span>
+                            <span class="font-semibold">7000 руб.</span>
+                        </li>
+                        
+                        <li class="flex justify-between text-sm border-b border-white/5 pb-2">
+                            <span class="text-slate-300">Группа безопасности котла</span>
+                            <span class="font-semibold">5000 руб.</span>
+                        </li>
+                        
+                        <li class="flex justify-between text-sm border-b border-white/5 pb-2">
+                            <span class="text-slate-300">Группа безопасности бойлера</span>
+                            <span class="font-semibold">4000 руб.</span>
+                        </li>
+                        
+                        <li class="flex justify-between text-sm border-b border-white/5 pb-2">
+                            <span class="text-slate-300">Расширительный бак (отопление)</span>
+                            <span class="font-semibold">4000 руб.</span>
+                        </li>
+                        
+                        <li class="flex justify-between text-sm border-b border-white/5 pb-2">
+                            <span class="text-slate-300">Расширительный бак (ГВС)</span>
+                            <span class="font-semibold">3000 руб.</span>
+                        </li>
+                        
+                        <li class="flex justify-between text-sm border-b border-white/5 pb-2">
+                            <span class="text-slate-300">Запорная арматура</span>
+                            <span class="font-semibold">10000 руб.</span>
+                        </li>
+                        
+                        <li class="flex justify-between text-sm border-b border-white/5 pb-2">
+                            <span class="text-slate-300">Монтажные работы</span>
+                            <span class="font-semibold">40000 руб.</span>
+                        </li>
+                        
+                        <li class="flex justify-between text-sm border-b border-white/5 pb-2">
+                            <span class="text-slate-300">Пусконаладочные работы</span>
+                            <span class="font-semibold">10000 руб.</span>
+                        </li>
+                        
+                    </ul>
+                </div>
+                <div class="text-3xl font-bold mb-6 text-center">266800 руб.</div>
+                <button class="w-full bg-gold/20 hover:bg-gold/40 text-gold font-bold py-3 rounded-xl transition-colors mb-3">
+                    Выбрать тариф
+                </button>
+                <button class="w-full bg-green-600/20 hover:bg-green-600/40 text-green-400 font-bold py-3 rounded-xl transition-colors" onclick="event.stopPropagation(); payAdvance('Базовый', '266800 руб.')">
+                    Внести аванс (Telegram)
+                </button>
+            </div>
+            
+        </div>
+    </div>
+</div>
+
+<!-- БЛОК 3: VOICE AI AGENT -->
+<div class="fixed bottom-10 right-10 z-50 flex flex-col items-center">
+    <div id="ai-status" class="mb-4 text-sm font-semibold text-gold bg-dark/80 px-4 py-2 rounded-full border border-gold/30 opacity-0 transition-opacity">
+        Говорите, я слушаю...
+    </div>
+    
+    <button id="ai-btn" class="ai-orb" onclick="toggleVoiceAI('16')">
+        <svg id="mic-icon" class="w-8 h-8 text-white" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M19 11a7 7 0 01-7 7m0 0a7 7 0 01-7-7m7 7v4m0 0H8m4 0h4m-4-8a3 3 0 01-3-3V5a3 3 0 116 0v6a3 3 0 01-3 3z"></path></svg>
+    </button>
+</div>
+
+<script>
+    const BACKEND_URL = "http://localhost:8080";
+
+    function initPage(proposalId) {
+        fetch(`${BACKEND_URL}/track`, {
+            method: 'POST', headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify({ proposal_id: proposalId, event_type: "opened" })
+        }).catch(e=>console.log(e));
+    }
+
+    // --- МАГИЯ 2026: ГОЛОСОВОЙ ИИ ---
+    
+    // Инициализируем Web Speech API (распознавание речи)
+    const SpeechRecognition = window.SpeechRecognition || window.webkitSpeechRecognition;
+    const recognition = new SpeechRecognition();
+    recognition.lang = 'ru-RU';
+    recognition.interimResults = false;
+    
+    // Инициализируем синтез речи (голос бота)
+    const synth = window.speechSynthesis;
+
+    const aiBtn = document.getElementById('ai-btn');
+    const aiStatus = document.getElementById('ai-status');
+    const micIcon = document.getElementById('mic-icon');
+    
+    let isListening = false;
+
+    function toggleVoiceAI(proposalId) {
+        if (isListening) { recognition.stop(); return; }
+        
+        // Прерываем текущую речь бота, если он говорит
+        synth.cancel();
+        
+        recognition.start();
+        isListening = true;
+        
+        // Визуализация
+        aiBtn.classList.add('listening');
+        aiStatus.innerText = "Говорите, я слушаю...";
+        aiStatus.style.opacity = "1";
+    }
+
+    recognition.onresult = async function(event) {
+        const transcript = event.results[0][0].transcript;
+        isListening = false;
+        
+        // Меняем статус на "Думает"
+        aiBtn.classList.remove('listening');
+        aiBtn.classList.add('thinking');
+        aiStatus.innerText = "Анализирую чертежи...";
+        micIcon.style.opacity = "0"; // Прячем микрофон пока крутится
+
+        try {
+            // Отправляем текст на ваш FastAPI
+            const response = await fetch(`${BACKEND_URL}/ai`, {
+                method: "POST", headers: { "Content-Type": "application/json" },
+                body: JSON.stringify({ question: transcript, proposal_id: "16" })
+            });
+            const data = await response.json();
+            
+            // Если ИИ решил пересчитать смету
+            if (data.action === "recalculate") {
+                speakText("Понял вас. Пересчитываю проект под новые параметры. Пожалуйста, подождите.");
+                aiStatus.innerText = "Пересчет сметы...";
+                setTimeout(() => window.location.reload(), 12000);
+            } else {
+                // ИИ просто отвечает на вопрос
+                speakText(data.answer);
+                aiStatus.innerText = "AI Инженер ответил";
+            }
+        } catch (e) {
+            speakText("Связь с сервером прервана. Попробуйте еще раз.");
+            aiStatus.innerText = "Ошибка сети";
+        }
+
+        // Возвращаем кнопку в исходное состояние
+        setTimeout(() => {
+            aiBtn.classList.remove('thinking');
+            micIcon.style.opacity = "1";
+            aiStatus.style.opacity = "0";
+        }, 2000);
+    };
+
+    recognition.onerror = function(event) {
+        isListening = false;
+        aiBtn.classList.remove('listening', 'thinking');
+        aiStatus.style.opacity = "0";
+    };
+
+    // Функция озвучки текста
+    function speakText(text) {
+        const utterThis = new SpeechSynthesisUtterance(text);
+        utterThis.lang = 'ru-RU';
+        utterThis.pitch = 1.0;
+        utterThis.rate = 1.05; // Чуть быстрее обычного
+        synth.speak(utterThis);
+    }
+    
+    function selectPlan(planName) {
+        speakText("Отличный выбор! Я уведомлю менеджера о вашем решении.");
+        fetch(`${BACKEND_URL}/track`, {
+            method: 'POST', headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify({ proposal_id: "16", event_type: "plan_clicked", metadata: { plan_name: planName } })
+        });
+        event.currentTarget.innerHTML = "✅ Выбрано";
+        event.currentTarget.classList.add("bg-green-500");
+    }
+
+    function payAdvance(planName, price) {
+        speakText(`Перевожу вас на безопасную страницу оплаты для тарифа ${planName}.`);
+        fetch(`${BACKEND_URL}/track`, {
+            method: 'POST', headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify({ proposal_id: "16", event_type: "pay_advance_clicked", metadata: { plan_name: planName, price: price } })
+        });
+        // Эмуляция редиректа на оплату Telegram Stars или эквайринг
+        alert(`Здесь будет открыт Telegram Web App эквайринг для оплаты аванса по тарифу: ${planName}`);
+    }
+
+    // --- ХИЩНАЯ ТЕЛЕМЕТРИЯ (SCROLL & HEATMAP) ---
+    let scrolled80 = false;
+    window.addEventListener('scroll', () => {
+        let scrollPercent = (window.scrollY + window.innerHeight) / document.documentElement.scrollHeight * 100;
+        if (scrollPercent > 80 && !scrolled80) {
+            scrolled80 = true;
+            fetch(`${BACKEND_URL}/track`, {
+                method: 'POST', headers: { 'Content-Type': 'application/json' },
+                body: JSON.stringify({ proposal_id: "16", event_type: "scrolled_80" })
+            });
+        }
+    });
+
+    // Простейшая тепловая карта: отслеживаем задержку на экране (Время просмотра блока тарифов)
+    let timeOnPlans = 0;
+    setInterval(() => {
+        let plansBlock = document.querySelector('.grid.md\\:grid-cols-3');
+        if (plansBlock) {
+            let rect = plansBlock.getBoundingClientRect();
+            if (rect.top < window.innerHeight && rect.bottom >= 0) {
+                timeOnPlans += 1;
+                if (timeOnPlans === 10) { // Если смотрел тарифы 10 секунд
+                    fetch(`${BACKEND_URL}/track`, {
+                        method: 'POST', headers: { 'Content-Type': 'application/json' },
+                        body: JSON.stringify({ proposal_id: "16", event_type: "viewing_plans_long" })
+                    });
+                }
+            }
+        }
+    }, 1000);
+</script>
+
+</body>
+</html>
