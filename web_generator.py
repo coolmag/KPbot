@@ -24,15 +24,18 @@ def generate_page(proposal_id: str, client: str, task: str, proposal_data: dict)
                     continue # Игнорируем некорректные цены
             plan["total_price"] = f"{total:,.0f} руб." # Форматируем обратно
 
-    # Рендерим шаблон, передавая в него все необходимые данные
+    # Извлекаем схему с фолбеком на случай, если ИИ ошибся
+    fallback_graph = "graph TD; A[Котел] --> B[Система отопления];"
+    mermaid_code = proposal_data.get("mermaid_graph", fallback_graph)
+
+    # Рендерим шаблон
     final_html = template.render(
         proposal_id=proposal_id,
         client=client,
         task=task,
-        backend_url=BACKEND_URL,
-        mermaid_graph=proposal_data.get("mermaid_graph", ""), # Add this line
-        # Передаем все данные из proposal_data напрямую
-        **proposal_data 
+        plans=plans_html, # Передаем сгенерированный HTML тарифов
+        backend_url=backend_url,
+        mermaid_graph=mermaid_code # Передаем сгенерированную схему
     )
 
     # 4. Сохраняем и загружаем на GitHub (через ваш github_pages.py)

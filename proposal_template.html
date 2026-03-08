@@ -39,7 +39,7 @@
         @keyframes reveal { from { opacity: 0; transform: translateY(40px); } to { opacity: 1; transform: translateY(0); } }
         .animate-reveal { animation: reveal 1s cubic-bezier(0.16, 1, 0.3, 1) forwards; opacity: 0; }
     </style>
-    <script src="https://cdn.jsdelivr.net/npm/mermaid/dist/mermaid.min.js"></script>
+    <script src="https://cdn.jsdelivr.net/npm/mermaid@10/dist/mermaid.min.js"></script>
     <script>
         mermaid.initialize({ startOnLoad: true, theme: 'dark' });
     </script>
@@ -63,12 +63,17 @@
         </a>
     </div>
 
-    <!-- БЛОК: ИНЖЕНЕРНАЯ АРХИТЕКТУРА -->
-    <div class="mt-16 glass-panel rounded-[2rem] p-8 animate-reveal relative overflow-hidden">
-        <h2 class="text-3xl font-bold mb-6 text-center text-gold">Архитектура системы</h2>
-        <p class="text-center text-slate-400 mb-8">AI-спроектированная топология котельной под ваши задачи</p>
+    <!-- БЛОК: ИНЖЕНЕРНАЯ АРХИТЕКТУРА (AI-ГЕНЕРАЦИЯ) -->
+    <div class="mt-16 glass-panel p-8 md:p-12 rounded-[2rem] animate-reveal relative overflow-hidden" style="animation-delay: 0.3s;">
+        <div class="absolute top-4 left-6 bg-blue-500/10 text-blue-400 border border-blue-500/20 px-4 py-1 rounded-full text-xs font-bold uppercase tracking-widest z-10">
+            AI-Архитектура
+        </div>
         
-        <div class="flex justify-center">
+        <h2 class="text-3xl font-bold mb-4 mt-6 text-center text-white tracking-tight">Топология котельной</h2>
+        <p class="text-center text-slate-400 mb-10 font-light">Логическая схема подключения контуров, спроектированная нейросетью под ваши задачи</p>
+        
+        <!-- Контейнер со схемой -->
+        <div class="flex justify-center w-full overflow-x-auto pb-4">
             <div class="mermaid text-center">
                 {{mermaid_graph}}
             </div>
