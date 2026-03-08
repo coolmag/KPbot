@@ -34,7 +34,7 @@ def generate_page(proposal_id: str, client: str, task: str, proposal_data: dict)
         client=client,
         task=task,
         plans=proposal_data.get("plans", []), # <--- ИСПРАВЛЕНИЕ ЗДЕСЬ! Передаем список данных.
-        backend_url=backend_url,
+        backend_url=BACKEND_URL,
         mermaid_graph=mermaid_code # Передаем сгенерированную схему
     )
 
