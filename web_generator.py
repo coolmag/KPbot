@@ -30,6 +30,7 @@ def generate_page(proposal_id: str, client: str, task: str, proposal_data: dict)
         client=client,
         task=task,
         backend_url=BACKEND_URL,
+        mermaid_graph=proposal_data.get("mermaid_graph", ""), # Add this line
         # Передаем все данные из proposal_data напрямую
         **proposal_data 
     )
