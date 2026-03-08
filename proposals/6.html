@@ -1,0 +1,265 @@
+<!DOCTYPE html>
+<html>
+
+<head>
+
+<meta charset="UTF-8">
+
+<title>Коммерческое предложение</title>
+
+<style>
+
+body{
+font-family:Arial;
+max-width:900px;
+margin:auto;
+padding:40px;
+}
+
+.header{
+font-size:32px;
+font-weight:bold;
+}
+
+.box{
+background:#f5f5f5;
+padding:20px;
+border-radius:10px;
+margin-top:20px;
+}
+
+.plan{
+border:1px solid #ddd;
+padding:15px;
+margin-top:15px;
+border-radius:8px;
+}
+
+.btn{
+background:#1a252f;
+color:white;
+padding:15px 25px;
+border-radius:8px;
+text-decoration:none;
+display:inline-block;
+margin-top:20px;
+}
+
+</style>
+
+</head>
+
+<body>
+
+<div class="header">Коммерческое предложение</div>
+
+<div class="box">
+
+<h3>Клиент</h3>
+<p>люди</p>
+
+<h3>Задача</h3>
+<p>котельная на 300 кв метров с удаленным управлением</p>
+
+</div>
+
+<h2>Варианты решения</h2>
+
+
+        <div class="relative glass-panel p-8 rounded-3xl cursor-pointer transition-all duration-500 border-white/5 hover:border-white/20 hover:-translate-y-1 flex flex-col h-full">
+            
+            <h3 class="text-3xl font-bold text-white mb-3 tracking-tight">Базовый</h3>
+            <p class="text-slate-400 text-sm mb-8 leading-relaxed flex-grow">Минимально необходимый комплект для обеспечения отопления объекта. Включает два котла, базовый монтаж и необходимые трубы.</p>
+            
+            <div class="space-y-4 mb-8">
+        
+                <div class="flex justify-between items-center border-b border-white/5 pb-3 group">
+                    <span class="text-slate-300 text-sm flex items-center gap-3">
+                        <div class="w-6 h-6 rounded-full bg-[#C5A059]/10 flex items-center justify-center text-[#C5A059]">
+                            <svg class="w-3 h-3" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="3" d="M5 13l4 4L19 7"></path></svg>
+                        </div>
+                        Gassero Alubox 50 (2 шт.)
+                    </span>
+                    <span class="text-white font-semibold whitespace-nowrap ml-4">570000</span>
+                </div>
+            
+                <div class="flex justify-between items-center border-b border-white/5 pb-3 group">
+                    <span class="text-slate-300 text-sm flex items-center gap-3">
+                        <div class="w-6 h-6 rounded-full bg-[#C5A059]/10 flex items-center justify-center text-[#C5A059]">
+                            <svg class="w-3 h-3" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="3" d="M5 13l4 4L19 7"></path></svg>
+                        </div>
+                        Монтажные работы
+                    </span>
+                    <span class="text-white font-semibold whitespace-nowrap ml-4">171000</span>
+                </div>
+            
+                <div class="flex justify-between items-center border-b border-white/5 pb-3 group">
+                    <span class="text-slate-300 text-sm flex items-center gap-3">
+                        <div class="w-6 h-6 rounded-full bg-[#C5A059]/10 flex items-center justify-center text-[#C5A059]">
+                            <svg class="w-3 h-3" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="3" d="M5 13l4 4L19 7"></path></svg>
+                        </div>
+                        Трубы и фитинги
+                    </span>
+                    <span class="text-white font-semibold whitespace-nowrap ml-4">85500</span>
+                </div>
+            
+                <div class="flex justify-between items-center border-b border-white/5 pb-3 group">
+                    <span class="text-slate-300 text-sm flex items-center gap-3">
+                        <div class="w-6 h-6 rounded-full bg-[#C5A059]/10 flex items-center justify-center text-[#C5A059]">
+                            <svg class="w-3 h-3" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="3" d="M5 13l4 4L19 7"></path></svg>
+                        </div>
+                        Автоматика (базовая)
+                    </span>
+                    <span class="text-white font-semibold whitespace-nowrap ml-4">20000</span>
+                </div>
+            
+            </div>
+            <button onclick="selectPlan('Базовый')" class="w-full py-4 rounded-xl font-bold transition-all duration-300 bg-white/5 text-white hover:bg-white/10 border border-white/10">
+                Выбрать этот тариф
+            </button>
+        </div>
+        
+        <div class="relative glass-panel p-8 rounded-3xl cursor-pointer transition-all duration-500 border-[#C5A059]/50 shadow-[0_0_30px_rgba(197,160,89,0.15)] transform -translate-y-2 flex flex-col h-full">
+            <div class="absolute -top-3 left-1/2 transform -translate-x-1/2 bg-[#C5A059] text-black text-xs font-bold px-4 py-1 rounded-full uppercase tracking-wider shadow-lg">Рекомендуем</div>
+            <h3 class="text-3xl font-bold text-white mb-3 tracking-tight">Оптимальный</h3>
+            <p class="text-slate-400 text-sm mb-8 leading-relaxed flex-grow">Расширенный комплект с улучшенной автоматикой и дополнительными функциями для повышения комфорта и эффективности.</p>
+            
+            <div class="space-y-4 mb-8">
+        
+                <div class="flex justify-between items-center border-b border-white/5 pb-3 group">
+                    <span class="text-slate-300 text-sm flex items-center gap-3">
+                        <div class="w-6 h-6 rounded-full bg-[#C5A059]/10 flex items-center justify-center text-[#C5A059]">
+                            <svg class="w-3 h-3" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="3" d="M5 13l4 4L19 7"></path></svg>
+                        </div>
+                        Gassero Alubox 50 (2 шт.)
+                    </span>
+                    <span class="text-white font-semibold whitespace-nowrap ml-4">570000</span>
+                </div>
+            
+                <div class="flex justify-between items-center border-b border-white/5 pb-3 group">
+                    <span class="text-slate-300 text-sm flex items-center gap-3">
+                        <div class="w-6 h-6 rounded-full bg-[#C5A059]/10 flex items-center justify-center text-[#C5A059]">
+                            <svg class="w-3 h-3" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="3" d="M5 13l4 4L19 7"></path></svg>
+                        </div>
+                        Монтажные работы (расширенные)
+                    </span>
+                    <span class="text-white font-semibold whitespace-nowrap ml-4">200000</span>
+                </div>
+            
+                <div class="flex justify-between items-center border-b border-white/5 pb-3 group">
+                    <span class="text-slate-300 text-sm flex items-center gap-3">
+                        <div class="w-6 h-6 rounded-full bg-[#C5A059]/10 flex items-center justify-center text-[#C5A059]">
+                            <svg class="w-3 h-3" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="3" d="M5 13l4 4L19 7"></path></svg>
+                        </div>
+                        Трубы и фитинги (улучшенные)
+                    </span>
+                    <span class="text-white font-semibold whitespace-nowrap ml-4">102000</span>
+                </div>
+            
+                <div class="flex justify-between items-center border-b border-white/5 pb-3 group">
+                    <span class="text-slate-300 text-sm flex items-center gap-3">
+                        <div class="w-6 h-6 rounded-full bg-[#C5A059]/10 flex items-center justify-center text-[#C5A059]">
+                            <svg class="w-3 h-3" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="3" d="M5 13l4 4L19 7"></path></svg>
+                        </div>
+                        Автоматика (расширенная)
+                    </span>
+                    <span class="text-white font-semibold whitespace-nowrap ml-4">40000</span>
+                </div>
+            
+                <div class="flex justify-between items-center border-b border-white/5 pb-3 group">
+                    <span class="text-slate-300 text-sm flex items-center gap-3">
+                        <div class="w-6 h-6 rounded-full bg-[#C5A059]/10 flex items-center justify-center text-[#C5A059]">
+                            <svg class="w-3 h-3" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="3" d="M5 13l4 4L19 7"></path></svg>
+                        </div>
+                        Расширительный бак
+                    </span>
+                    <span class="text-white font-semibold whitespace-nowrap ml-4">15000</span>
+                </div>
+            
+            </div>
+            <button onclick="selectPlan('Оптимальный')" class="w-full py-4 rounded-xl font-bold transition-all duration-300 bg-gradient-to-r from-[#C5A059] to-[#d6b473] text-black hover:shadow-[0_0_20px_rgba(197,160,89,0.4)]">
+                Выбрать этот тариф
+            </button>
+        </div>
+        
+        <div class="relative glass-panel p-8 rounded-3xl cursor-pointer transition-all duration-500 border-[#C5A059]/50 shadow-[0_0_30px_rgba(197,160,89,0.15)] transform -translate-y-2 flex flex-col h-full">
+            <div class="absolute -top-3 left-1/2 transform -translate-x-1/2 bg-[#C5A059] text-black text-xs font-bold px-4 py-1 rounded-full uppercase tracking-wider shadow-lg">Рекомендуем</div>
+            <h3 class="text-3xl font-bold text-white mb-3 tracking-tight">Премиум</h3>
+            <p class="text-slate-400 text-sm mb-8 leading-relaxed flex-grow">Максимальный комфорт и надежность с удаленным управлением и расширенной автоматикой.</p>
+            
+            <div class="space-y-4 mb-8">
+        
+                <div class="flex justify-between items-center border-b border-white/5 pb-3 group">
+                    <span class="text-slate-300 text-sm flex items-center gap-3">
+                        <div class="w-6 h-6 rounded-full bg-[#C5A059]/10 flex items-center justify-center text-[#C5A059]">
+                            <svg class="w-3 h-3" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="3" d="M5 13l4 4L19 7"></path></svg>
+                        </div>
+                        Gassero Alubox 50 (2 шт.)
+                    </span>
+                    <span class="text-white font-semibold whitespace-nowrap ml-4">570000</span>
+                </div>
+            
+                <div class="flex justify-between items-center border-b border-white/5 pb-3 group">
+                    <span class="text-slate-300 text-sm flex items-center gap-3">
+                        <div class="w-6 h-6 rounded-full bg-[#C5A059]/10 flex items-center justify-center text-[#C5A059]">
+                            <svg class="w-3 h-3" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="3" d="M5 13l4 4L19 7"></path></svg>
+                        </div>
+                        Монтажные работы (полный комплекс)
+                    </span>
+                    <span class="text-white font-semibold whitespace-nowrap ml-4">230000</span>
+                </div>
+            
+                <div class="flex justify-between items-center border-b border-white/5 pb-3 group">
+                    <span class="text-slate-300 text-sm flex items-center gap-3">
+                        <div class="w-6 h-6 rounded-full bg-[#C5A059]/10 flex items-center justify-center text-[#C5A059]">
+                            <svg class="w-3 h-3" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="3" d="M5 13l4 4L19 7"></path></svg>
+                        </div>
+                        Трубы и фитинги (премиум)
+                    </span>
+                    <span class="text-white font-semibold whitespace-nowrap ml-4">120000</span>
+                </div>
+            
+                <div class="flex justify-between items-center border-b border-white/5 pb-3 group">
+                    <span class="text-slate-300 text-sm flex items-center gap-3">
+                        <div class="w-6 h-6 rounded-full bg-[#C5A059]/10 flex items-center justify-center text-[#C5A059]">
+                            <svg class="w-3 h-3" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="3" d="M5 13l4 4L19 7"></path></svg>
+                        </div>
+                        Автоматика (полный комплект)
+                    </span>
+                    <span class="text-white font-semibold whitespace-nowrap ml-4">60000</span>
+                </div>
+            
+                <div class="flex justify-between items-center border-b border-white/5 pb-3 group">
+                    <span class="text-slate-300 text-sm flex items-center gap-3">
+                        <div class="w-6 h-6 rounded-full bg-[#C5A059]/10 flex items-center justify-center text-[#C5A059]">
+                            <svg class="w-3 h-3" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="3" d="M5 13l4 4L19 7"></path></svg>
+                        </div>
+                        Система удаленного управления
+                    </span>
+                    <span class="text-white font-semibold whitespace-nowrap ml-4">50000</span>
+                </div>
+            
+                <div class="flex justify-between items-center border-b border-white/5 pb-3 group">
+                    <span class="text-slate-300 text-sm flex items-center gap-3">
+                        <div class="w-6 h-6 rounded-full bg-[#C5A059]/10 flex items-center justify-center text-[#C5A059]">
+                            <svg class="w-3 h-3" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="3" d="M5 13l4 4L19 7"></path></svg>
+                        </div>
+                        Расширительный бак
+                    </span>
+                    <span class="text-white font-semibold whitespace-nowrap ml-4">15000</span>
+                </div>
+            
+            </div>
+            <button onclick="selectPlan('Премиум')" class="w-full py-4 rounded-xl font-bold transition-all duration-300 bg-gradient-to-r from-[#C5A059] to-[#d6b473] text-black hover:shadow-[0_0_20px_rgba(197,160,89,0.4)]">
+                Выбрать этот тариф
+            </button>
+        </div>
+        
+
+<a class="btn">
+Принять предложение
+</a>
+
+</body>
+
+</html>
