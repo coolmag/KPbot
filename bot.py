@@ -117,10 +117,29 @@ async def about_client(update: Update, context: ContextTypes.DEFAULT_TYPE) -> in
     return TASK_INFO
 
 async def task_info(update: Update, context: ContextTypes.DEFAULT_TYPE) -> int:
-    context.user_data['task_info'] = update.message.text
+    # Определяем тип входных данных (текст, фото или голос)
+    media_path = None
+    media_type = "text"
+    task_text = ""
+
+    if update.message.text:
+        task_text = update.message.text
+    elif update.message.photo:
+        media_type = "photo"
+        task_text = update.message.caption or "Анализ помещения по фото"
+        photo_file = await update.message.photo[-1].get_file()
+        media_path = f"temp_{update.effective_user.id}_{photo_file.file_id}.jpg"
+        await photo_file.download_to_drive(media_path)
+    elif update.message.voice:
+        media_type = "voice"
+        task_text = "Голосовое сообщение" # Текст будет распознан позже
+        voice_file = await update.message.voice.get_file()
+        media_path = f"temp_{update.effective_user.id}_{voice_file.file_id}.ogg"
+        await voice_file.download_to_drive(media_path)
+
+    context.user_data['task_info'] = task_text
     
     client_name = context.user_data.get("about_client", "Клиент")
-    task_text = context.user_data.get("task_info")
     user_id = update.effective_user.id
     chat_id = update.effective_chat.id
 
@@ -131,8 +150,8 @@ async def task_info(update: Update, context: ContextTypes.DEFAULT_TYPE) -> int:
         task_text
     )
 
-    # Этап 2: Отправляем "тяжелую" задачу на генерацию в Celery, передавая chat_id.
-    task_generate_proposal.delay(proposal_id, client_name, task_text, chat_id)
+    # Этап 2: Отправляем "тяжелую" задачу на генерацию в Celery, передавая chat_id и media.
+    task_generate_proposal.delay(proposal_id, client_name, task_text, chat_id, media_path, media_type)
     
     # Этап 3: Моментально отвечаем, что задача в работе. Результат пришлет воркер.
     await update.message.reply_text(
@@ -192,7 +211,7 @@ def main() -> None:
         states={
             ABOUT_YOU: [MessageHandler(filters.TEXT & ~filters.COMMAND, about_you)],
             ABOUT_CLIENT: [MessageHandler(filters.TEXT & ~filters.COMMAND, about_client)],
-            TASK_INFO: [MessageHandler(filters.TEXT & ~filters.COMMAND, task_info)],
+            TASK_INFO: [MessageHandler(filters.TEXT | filters.PHOTO | filters.VOICE & ~filters.COMMAND, task_info)],
         },
         fallbacks=[CommandHandler('cancel', cancel)],
         per_user=True,

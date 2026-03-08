@@ -66,7 +66,17 @@
 
 
 
-    <!-- БЛОК 1: ИНЖЕНЕРНАЯ СХЕМА (ВМЕСТО 3D) -->
+    <!-- БЛОК 0: 3D МОДЕЛЬ -->
+    <div class="mt-16 glass-panel rounded-[2rem] p-8 animate-reveal relative overflow-hidden" style="animation-delay: 0.1s;">
+        <h2 class="text-3xl font-bold mb-2 mt-4 text-center">Интерактивная 3D-модель</h2>
+        <p class="text-center text-slate-400 mb-8 text-sm">Вращайте модель для осмотра оборудования (демонстрационная модель)</p>
+        <model-viewer src="https://modelviewer.dev/shared-assets/models/NeilArmstrong.glb" 
+                      auto-rotate camera-controls shadow-intensity="1"
+                      alt="3D модель оборудования">
+        </model-viewer>
+    </div>
+
+    <!-- БЛОК 1: ИНЖЕНЕРНАЯ СХЕМА -->
     <div class="mt-16 glass-panel rounded-[2rem] p-8 animate-reveal relative overflow-hidden" style="animation-delay: 0.2s;">
         <div class="absolute top-4 left-6 bg-blue-500/10 text-blue-400 border border-blue-500/20 px-4 py-1 rounded-full text-xs font-bold uppercase tracking-widest z-10">
             AI-Проектирование
@@ -87,7 +97,29 @@
     <div class="mt-16 animate-reveal" style="animation-delay: 0.4s;">
         <h2 class="text-3xl font-bold mb-8 text-center">Конфигурации системы</h2>
         <div class="grid md:grid-cols-3 gap-8">
-            {{plans}}
+            {% for plan in plans %}
+            <div class="glass-panel p-6 rounded-2xl flex flex-col cursor-pointer transition-all duration-300 hover:border-gold/50" onclick="selectPlan('{{plan.name}}')">
+                <h3 class="text-2xl font-bold text-gold mb-2">{{plan.name}}</h3>
+                <p class="text-sm text-slate-400 mb-6">{{plan.description}}</p>
+                <div class="flex-grow">
+                    <ul class="space-y-3 mb-6">
+                        {% for item in plan.budget_items %}
+                        <li class="flex justify-between text-sm border-b border-white/5 pb-2">
+                            <span class="text-slate-300">{{item.item}}</span>
+                            <span class="font-semibold">{{item.price}}</span>
+                        </li>
+                        {% endfor %}
+                    </ul>
+                </div>
+                <div class="text-3xl font-bold mb-6 text-center">{{plan.total_price}}</div>
+                <button class="w-full bg-gold/20 hover:bg-gold/40 text-gold font-bold py-3 rounded-xl transition-colors mb-3">
+                    Выбрать тариф
+                </button>
+                <button class="w-full bg-green-600/20 hover:bg-green-600/40 text-green-400 font-bold py-3 rounded-xl transition-colors" onclick="event.stopPropagation(); payAdvance('{{plan.name}}', '{{plan.total_price}}')">
+                    Внести аванс (Telegram)
+                </button>
+            </div>
+            {% endfor %}
         </div>
     </div>
 </div>
@@ -210,6 +242,47 @@
         event.currentTarget.innerHTML = "✅ Выбрано";
         event.currentTarget.classList.add("bg-green-500");
     }
+
+    function payAdvance(planName, price) {
+        speakText(`Перевожу вас на безопасную страницу оплаты для тарифа ${planName}.`);
+        fetch(`${BACKEND_URL}/track`, {
+            method: 'POST', headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify({ proposal_id: "{{proposal_id}}", event_type: "pay_advance_clicked", metadata: { plan_name: planName, price: price } })
+        });
+        // Эмуляция редиректа на оплату Telegram Stars или эквайринг
+        alert(`Здесь будет открыт Telegram Web App эквайринг для оплаты аванса по тарифу: ${planName}`);
+    }
+
+    // --- ХИЩНАЯ ТЕЛЕМЕТРИЯ (SCROLL & HEATMAP) ---
+    let scrolled80 = false;
+    window.addEventListener('scroll', () => {
+        let scrollPercent = (window.scrollY + window.innerHeight) / document.documentElement.scrollHeight * 100;
+        if (scrollPercent > 80 && !scrolled80) {
+            scrolled80 = true;
+            fetch(`${BACKEND_URL}/track`, {
+                method: 'POST', headers: { 'Content-Type': 'application/json' },
+                body: JSON.stringify({ proposal_id: "{{proposal_id}}", event_type: "scrolled_80" })
+            });
+        }
+    });
+
+    // Простейшая тепловая карта: отслеживаем задержку на экране (Время просмотра блока тарифов)
+    let timeOnPlans = 0;
+    setInterval(() => {
+        let plansBlock = document.querySelector('.grid.md\\:grid-cols-3');
+        if (plansBlock) {
+            let rect = plansBlock.getBoundingClientRect();
+            if (rect.top < window.innerHeight && rect.bottom >= 0) {
+                timeOnPlans += 1;
+                if (timeOnPlans === 10) { // Если смотрел тарифы 10 секунд
+                    fetch(`${BACKEND_URL}/track`, {
+                        method: 'POST', headers: { 'Content-Type': 'application/json' },
+                        body: JSON.stringify({ proposal_id: "{{proposal_id}}", event_type: "viewing_plans_long" })
+                    });
+                }
+            }
+        }
+    }, 1000);
 </script>
 
 </body>

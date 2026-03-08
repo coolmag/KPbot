@@ -5,6 +5,7 @@ python-dotenv==1.0.1
 google-genai>=1.0.0
 pydantic>=2.0.0
 requests
+duckduckgo-search>=5.0.0
 
 fastapi
 uvicorn

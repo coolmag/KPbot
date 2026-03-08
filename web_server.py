@@ -66,7 +66,13 @@ def track_client_action(event: TrackEvent):
         notify(f"🔥 Клиент долистал КП `#{event.proposal_id}` до конца!")
     elif event.event_type == "plan_clicked":
         plan_name = event.metadata.get("plan_name", "")
-        notify(f"💰 Клиент кликнул на тариф **{plan_name}** в КП `#{event.proposal_id}`!")
+        notify(f"👍 Клиент проявил интерес к тарифу **{plan_name}** в КП `#{event.proposal_id}`!")
+    elif event.event_type == "pay_advance_clicked":
+        plan_name = event.metadata.get("plan_name", "")
+        price = event.metadata.get("price", "")
+        notify(f"🤑 **ВНИМАНИЕ!** Клиент нажал кнопку **Внести аванс** ({plan_name}, {price}) в КП `#{event.proposal_id}`! СРОЧНО свяжитесь с ним!")
+    elif event.event_type == "viewing_plans_long":
+        notify(f"👀 Клиент уже 10 секунд изучает тарифы в КП `#{event.proposal_id}`. Самое время предложить скидку!")
         
     return {"status": "ok"}
 

@@ -7,8 +7,8 @@ logger = logging.getLogger(__name__)
 
 # Загружаем токен и настройки из переменных окружения
 GITHUB_TOKEN = os.getenv("GITHUB_TOKEN")
-OWNER = "coolmag"
-REPO = "KPbot"
+OWNER = os.getenv("GITHUB_OWNER", "coolmag")
+REPO = os.getenv("GITHUB_REPO", "KPbot")
 
 
 def upload_page(filename: str, content: str):
