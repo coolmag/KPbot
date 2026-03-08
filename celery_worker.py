@@ -1,6 +1,7 @@
 # celery_worker.py
 import os
 import requests
+import time # Добавьте это в самом верху
 from celery import Celery
 from ai_service import get_smart_proposal
 from web_generator import generate_page
@@ -29,6 +30,9 @@ def task_generate_proposal(proposal_id: int, client: str, task: str, chat_id: in
         # 3. ДЕЛАЕМ PDF-ВЕРСИЮ
         pdf_filename = f"proposal_{proposal_id}.pdf"
         generate_pdf(proposal_data, pdf_filename, str(proposal_id)) # Вызываем вашу старую добрую функцию
+        
+        # МАЛЕНЬКИЙ ТРЮК: Ждем 10 секунд, чтобы GitHub успел обновить сайт
+        time.sleep(60)
         
         # 4. Отправляем результаты обратно менеджеру в Telegram (через API)
         bot_token = os.getenv("TELEGRAM_BOT_TOKEN")

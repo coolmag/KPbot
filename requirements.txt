@@ -12,3 +12,4 @@ celery
 redis
 qrcode
 pillow
+jinja2
