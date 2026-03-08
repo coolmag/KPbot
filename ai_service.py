@@ -38,21 +38,21 @@ def get_smart_proposal(prompt: str) -> dict | None:
 
     # 3. Формируем умный промпт с передачей структуры JSON
     system_instruction = (
-        "Ты — Главный инженер и проектировщик котельных KOTEL.MSK.RU.\n"
-        "Твоя задача составить детальное коммерческое предложение.\n"
-        "ОБЯЗАТЕЛЬНЫЕ УСЛОВИЯ:\n"
-        f"- Используй СТРОГО следующее оборудование: {selected_boiler['model']} ({selected_boiler['power']} кВт).\n"
-        f"- Цена котла: {selected_boiler['price']} руб. Добавь к этому стоимость монтажа и труб.\n"
-        "- Разбей предложение на 2-3 тарифа (Плана), например: 'Базовый', 'Оптимальный', 'Премиум'.\n"
-        "- Разработай логическую блок-схему системы на языке Mermaid.js (graph TD). "
-        "Определи, нужен ли бойлер, гидрострелка, коллектор, насосы теплых полов или радиаторов исходя из ТЗ. "
-        "ВАЖНО: разделяй команды в Mermaid строго точкой с запятой (;), без переносов строк!\n\n"
-        "ВНИМАНИЕ! Твой ответ должен быть СТРОГО валидным JSON без маркдауна и лишнего текста. Соблюдай эту структуру:\n"
+        "Ты — Главный инженер-теплотехник KOTEL.MSK.RU. Твоя задача — спроектировать котельную и составить смету.\n"
+        "ОБЯЗАТЕЛЬНЫЕ ИНЖЕНЕРНЫЕ ПРАВИЛА:\n"
+        "1. Если площадь дома > 150 м2 или есть запрос на Теплый пол (ТП) и Радиаторы: ОБЯЗАТЕЛЬНО используй Гидроразделитель (гидрострелку) и Коллекторную группу.\n"
+        "2. Для горячей воды (ГВС) в больших домах ОБЯЗАТЕЛЬНО добавляй Бойлер косвенного нагрева (БКН) на 150-200л и насос загрузки бойлера.\n"
+        "3. На каждый контур (ТП, Радиаторы, БКН) закладывай отдельный циркуляционный насос (например, Grundfos или Wilo).\n"
+        "4. Не забывай про группы безопасности, расширительные баки (для отопления и ГВС) и запорную арматуру.\n"
+        f"5. ОСНОВНОЙ КОТЕЛ: {selected_boiler['model']} ({selected_boiler['power']} кВт, {selected_boiler['price']} руб).\n"
+        "- Разработай подробную блок-схему на Mermaid.js (graph TD). Разделяй команды строго точкой с запятой (;). "
+        "Пример: graph TD; Котел-->Гидрострелка; Гидрострелка-->Коллектор; Коллектор-->НасосТП; Коллектор-->НасосРадиаторов; Котел-->БКН;\n\n"
+        "Верни СТРОГО JSON. Структура:\n"
         "{\n"
-        '  "internal_reasoning": "твой ход мыслей",\n'
+        '  "internal_reasoning": "...",\n'
         '  "title": "...",\n'
         '  "executive_summary": "...",\n'
-        '  "mermaid_graph": "graph TD; A[Котел] --> B[Гидрострелка]; B --> C[Коллектор]; C --> D[Насос Теплого Пола];",'
+        '  "mermaid_graph": "graph TD; ...",\n'
         '  "client_pain_points": ["Боль клиента 1", "Боль клиента 2"],\n'
         '  "solution_steps": [{"step_name": "Шаг 1", "description": "Описание шага"}],\n'
         '  "plans": [\n'
@@ -60,29 +60,35 @@ def get_smart_proposal(prompt: str) -> dict | None:
         "  ]\n"
         "}"
     )
-    try:
-        response = client.models.generate_content(
-            model='gemma-3-27b-it',
-            contents=system_instruction + f"\n\nЗАПРОС ОТ МЕНЕДЖЕРА: {prompt}",
-            config=types.GenerateContentConfig(
-                temperature=0.4
-                # ❌ МЫ УБРАЛИ response_schema и response_mime_type, чтобы API не ругался
-            ),
-        )
+    # Пробуем сгенерировать до 3 раз (Self-Healing Loop)
+    max_retries = 3
+    for attempt in range(max_retries):
+        try:
+            response = client.models.generate_content(
+                model='gemma-3-27b-it',
+                contents=system_instruction + f"\n\nЗАПРОС ОТ МЕНЕДЖЕРА: {prompt}",
+                config=types.GenerateContentConfig(temperature=0.3)
+            )
 
-        if response.text:
-            # ✅ Очищаем текст нейросети от возможных markdown-оберток (```json ... ```)
-            raw_json = response.text.strip()
-            if raw_json.startswith("```json"):
-                raw_json = raw_json[7:]
-            elif raw_json.startswith("```"):
-                raw_json = raw_json[3:]
-            if raw_json.endswith("```"):
-                raw_json = raw_json[:-3]
+            if response.text:
+                raw_json = response.text.strip()
+                # Срезаем маркдаун
+                if raw_json.startswith("```json"): raw_json = raw_json[7:]
+                elif raw_json.startswith("```"): raw_json = raw_json[3:]
+                if raw_json.endswith("```"): raw_json = raw_json[:-3]
                 
-            logger.info("✅ Успешная генерация текста, парсим JSON...")
-            return json.loads(raw_json.strip())
+                # Пытаемся распарсить
+                data = json.loads(raw_json.strip())
+                logger.info(f"✅ Успешная AI-генерация с {attempt + 1} попытки!")
+                return data
+                
+        except json.JSONDecodeError as e:
+            logger.warning(f"⚠️ AI выдал невалидный JSON (попытка {attempt + 1}/{max_retries}): {e}")
+            if attempt == max_retries - 1:
+                logger.error("❌ Фатальный сбой: AI так и не смог выдать правильный JSON.")
+                return None
+        except Exception as e:
+            logger.error(f"❌ Ошибка API Google: {e}")
+            return None
             
-    except Exception as e:
-        logger.error(f"Сбой генерации: {e}")
-        return None
+    return None

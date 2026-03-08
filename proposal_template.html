@@ -63,42 +63,23 @@
         </a>
     </div>
 
-    <!-- БЛОК: ИНЖЕНЕРНАЯ АРХИТЕКТУРА (AI-ГЕНЕРАЦИЯ) -->
-    <div class="mt-16 glass-panel p-8 md:p-12 rounded-[2rem] animate-reveal relative overflow-hidden" style="animation-delay: 0.3s;">
+
+
+    <!-- БЛОК 1: ИНЖЕНЕРНАЯ СХЕМА (ВМЕСТО 3D) -->
+    <div class="mt-16 glass-panel rounded-[2rem] p-8 animate-reveal relative overflow-hidden" style="animation-delay: 0.2s;">
         <div class="absolute top-4 left-6 bg-blue-500/10 text-blue-400 border border-blue-500/20 px-4 py-1 rounded-full text-xs font-bold uppercase tracking-widest z-10">
-            AI-Архитектура
+            AI-Проектирование
         </div>
         
-        <h2 class="text-3xl font-bold mb-4 mt-6 text-center text-white tracking-tight">Топология котельной</h2>
-        <p class="text-center text-slate-400 mb-10 font-light">Логическая схема подключения контуров, спроектированная нейросетью под ваши задачи</p>
+        <h2 class="text-3xl font-bold mb-2 mt-8 text-center">Гидравлическая схема</h2>
+        <p class="text-center text-slate-400 mb-8 text-sm">Сгенерировано нейросетью на основе параметров объекта</p>
         
-        <!-- Контейнер со схемой -->
-        <div class="flex justify-center w-full overflow-x-auto pb-4">
-            <div class="mermaid text-center">
+        <!-- Окно чертежа -->
+        <div class="bg-black/40 border border-white/5 rounded-2xl p-6 overflow-x-auto">
+            <div class="mermaid text-center" style="min-height: 300px;">
                 {{mermaid_graph}}
             </div>
         </div>
-    </div>
-
-    <!-- БЛОК 1: SPATIAL COMPUTING (3D Модель) -->
-    <div class="mt-16 glass-panel rounded-[2rem] p-8 animate-reveal relative overflow-hidden" style="animation-delay: 0.2s;">
-        <div class="absolute top-4 left-6 bg-gold/10 text-gold border border-gold/20 px-4 py-1 rounded-full text-xs font-bold uppercase tracking-widest z-10">
-            Интерактивный 3D-двойник
-        </div>
-        
-        <!-- Заглушка 3D модели (цилиндр/бак). В будущем загрузите свой .glb файл на GitHub -->
-        <model-viewer 
-            src="https://modelviewer.dev/shared-assets/models/Astronaut.glb" 
-            ios-src="" 
-            alt="3D Модель оборудования" 
-            shadow-intensity="1" 
-            camera-controls 
-            auto-rotate 
-            ar>
-            <button slot="ar-button" class="absolute bottom-4 right-4 bg-white text-dark px-6 py-3 rounded-2xl font-bold shadow-lg hover:scale-105 transition-transform">
-                👁️ Посмотреть у себя в комнате (AR)
-            </button>
-        </model-viewer>
     </div>
 
     <!-- БЛОК 2: ТАРИФЫ -->

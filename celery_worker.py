@@ -1,66 +1,68 @@
-# celery_worker.py
 import os
 import requests
-import time # Добавьте это в самом верху
 from celery import Celery
 from ai_service import get_smart_proposal
 from web_generator import generate_page
 from pdf_generator import generate_pdf
 from database import update_proposal_with_data
 import logging
+import time # Добавлено для time.sleep (если нужно)
 
 logger = logging.getLogger(__name__)
 
-# Подключаемся к Redis (по умолчанию локальный)
-redis_url = os.getenv("REDIS_URL", "redis://localhost:6379/0")
-celery_app = Celery('tasks', broker=redis_url)
+redis_url = os.getenv("REDIS_URL")
+if not redis_url:
+    print("❌ КРИТИЧЕСКАЯ ОШИБКА: Переменная REDIS_URL не найдена!")
 
+celery_app = Celery('tasks', broker=redis_url, backend=redis_url)
+
+# НОВАЯ ЗАДАЧА: Отправка сообщения (она ждет 10 секунд в фоне, не мешая остальным)
+@celery_app.task
+def task_send_result(chat_id: int, proposal_id: int, web_url: str, pdf_filename: str):
+    bot_token = os.getenv("TELEGRAM_BOT_TOKEN")
+    
+    # 1. Отправляем текст и ссылку
+    requests.post(f"https://api.telegram.org/bot{bot_token}/sendMessage", json={
+        "chat_id": chat_id,
+        "text": f"✅ Готово! Проект #{proposal_id}
+
+🌐 Интерактивная 3D-версия: {web_url}
+📄 PDF-версия для печати прикреплена ниже 👇",
+        "parse_mode": "HTML"
+    })
+    
+    # 2. Отправляем PDF
+    if os.path.exists(pdf_filename):
+        with open(pdf_filename, "rb") as f:
+            requests.post(f"https://api.telegram.org/bot{bot_token}/sendDocument", data={
+                "chat_id": chat_id
+            }, files={"document": f})
+        
+        # 3. Чистим за собой сервер (удаляем PDF после отправки)
+        os.remove(pdf_filename) 
+    return True
+
+# ОСНОВНАЯ ЗАДАЧА (Теперь работает молниеносно)
 @celery_app.task
 def task_generate_proposal(proposal_id: int, client: str, task: str, chat_id: int):
     logger.info(f"🔄 [Worker] Начинаю генерацию для КП #{proposal_id}")
     
-    # 1. Нейросеть генерирует данные
     proposal_data = get_smart_proposal(task)
     
     if proposal_data:
-        # 2. Сохраняем в базу и делаем WEB-версию
         update_proposal_with_data(proposal_id, proposal_data)
         generate_page(proposal_id, client, task, proposal_data)
         
-        # 3. ДЕЛАЕМ PDF-ВЕРСИЮ
         pdf_filename = f"proposal_{proposal_id}.pdf"
-        generate_pdf(proposal_data, pdf_filename, str(proposal_id)) # Вызываем вашу старую добрую функцию
+        generate_pdf(proposal_data, pdf_filename, str(proposal_id))
         
-        # МАЛЕНЬКИЙ ТРЮК: Ждем 10 секунд, чтобы GitHub успел обновить сайт
-        time.sleep(60)
-        
-        # 4. Отправляем результаты обратно менеджеру в Telegram (через API)
-        bot_token = os.getenv("TELEGRAM_BOT_TOKEN")
         web_url = f"https://coolmag.github.io/KPbot/proposals/{proposal_id}.html"
         
-        # Отправляем текст со ссылкой
-        requests.post(f"https://api.telegram.org/bot{bot_token}/sendMessage", json={
-            "chat_id": chat_id,
-            "text": f"""✅ Готово! Проект #{proposal_id}
-
-🌐 Интерактивная 3D-версия: {web_url}
-📄 PDF-версия для печати прикреплена ниже 👇""",
-            "parse_mode": "HTML"
-        })
+        # МАГИЯ АСИНХРОННОСТИ: Отправляем сообщение через 10 секунд!
+        task_send_result.apply_async(args=[chat_id, proposal_id, web_url, pdf_filename], countdown=10)
         
-        # Отправляем сам PDF файл прямо в чат!
-        try:
-            with open(pdf_filename, "rb") as f:
-                requests.post(f"https://api.telegram.org/bot{bot_token}/sendDocument", data={
-                    "chat_id": chat_id
-                }, files={"document": f})
-        finally:
-            # Удаляем временный файл PDF после отправки
-            if os.path.exists(pdf_filename):
-                os.remove(pdf_filename)
-            
-        logger.info(f"✅ [Worker] КП #{proposal_id} (WEB + PDF) успешно отправлено!")
+        logger.info(f"✅ [Worker] КП #{proposal_id} сгенерировано. Отправка клиенту через 10 секунд...")
         return True
-    
+        
     logger.error(f"❌ [Worker] Ошибка AI-генерации для КП #{proposal_id}")
     return False
