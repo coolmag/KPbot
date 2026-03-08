@@ -122,6 +122,7 @@ async def task_info(update: Update, context: ContextTypes.DEFAULT_TYPE) -> int:
     client_name = context.user_data.get("about_client", "Клиент")
     task_text = context.user_data.get("task_info")
     user_id = update.effective_user.id
+    chat_id = update.effective_chat.id
 
     # Этап 1: Создаем первоначальную запись в БД и получаем ID
     proposal_id = save_proposal(
@@ -130,17 +131,14 @@ async def task_info(update: Update, context: ContextTypes.DEFAULT_TYPE) -> int:
         task_text
     )
 
-    # Этап 2: Отправляем "тяжелую" задачу на генерацию в Celery и НЕ ждем ее выполнения.
-    # Воркер сам обновит запись в БД, сгенерирует и загрузит HTML.
-    task_generate_proposal.delay(proposal_id, client_name, task_text)
+    # Этап 2: Отправляем "тяжелую" задачу на генерацию в Celery, передавая chat_id.
+    task_generate_proposal.delay(proposal_id, client_name, task_text, chat_id)
     
-    # Этап 3: Моментально отвечаем пользователю, что задача принята.
-    web_link = f"https://coolmag.github.io/KPbot/proposals/{proposal_id}.html"
-    
+    # Этап 3: Моментально отвечаем, что задача в работе. Результат пришлет воркер.
     await update.message.reply_text(
-        f"✅ Принято! ID проекта: {proposal_id}\n\n"
-        f"AI-генератор уже начал работу. "
-        f"Онлайн-версия КП будет доступна через 1-2 минуты по ссылке:\n{web_link}"
+        f"✅ Принято в работу! ID проекта: {proposal_id}\n\n"
+        f"AI-генератор уже проектирует систему. "
+        f"Готовый результат (WEB + PDF) придет в этот чат через 1-2 минуты."
     )
     
     # Завершаем диалог

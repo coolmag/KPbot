@@ -75,9 +75,8 @@ def create_cover_page(story, styles, font_name, data):
     story.append(Paragraph(f"Дата: {date_str}", style_meta))
     story.append(PageBreak())
 
-def create_proposal_pdf(data: dict) -> bytes:
-    buffer = BytesIO()
-    doc = SimpleDocTemplate(buffer, pagesize=A4, rightMargin=2.5*cm, leftMargin=2.5*cm, topMargin=2.5*cm, bottomMargin=2.5*cm)
+def generate_pdf(data: dict, filename: str):
+    doc = SimpleDocTemplate(filename, pagesize=A4, rightMargin=2.5*cm, leftMargin=2.5*cm, topMargin=2.5*cm, bottomMargin=2.5*cm)
     font_name = register_fonts()
     styles = getSampleStyleSheet()
 
@@ -170,5 +169,3 @@ def create_proposal_pdf(data: dict) -> bytes:
     story.append(Paragraph(link_text, ParagraphStyle('Link', parent=style_body, alignment=TA_CENTER)))
 
     doc.build(story, onFirstPage=on_page, onLaterPages=on_page)
-    buffer.seek(0)
-    return buffer.getvalue()

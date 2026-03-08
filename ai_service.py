@@ -26,7 +26,7 @@ def get_smart_proposal(prompt: str) -> dict | None:
     api_key = os.getenv("GOOGLE_API_KEY")
     client = genai.Client(api_key=api_key)
 
-    # 1. Пытаемся вытащить площадь из запроса (как было у вас)
+    # 1. Пытаемся вытащить площадь из запроса
     area = 100 # по умолчанию
     area_match = re.search(r'(\d+)\s*(кв|м2|метр)', prompt)
     if area_match:
@@ -36,34 +36,52 @@ def get_smart_proposal(prompt: str) -> dict | None:
     selected_boiler = find_best_boiler(area)
     logger.info(f"✅ Выбран котел из базы: {selected_boiler['model']} за {selected_boiler['price']} руб.")
 
-    # 3. Формируем умный промпт с передачей реальных данных
-    system_instruction = f"""Ты — Главный инженер и менеджер по продажам KOTEL.MSK.RU.
-Твоя задача составить детальное коммерческое предложение.
-ОБЯЗАТЕЛЬНЫЕ УСЛОВИЯ:
-- Используй СТРОГО следующее оборудование: {selected_boiler['model']} ({selected_boiler['power']} кВт).
-- Цена котла: {selected_boiler['price']} руб. Добавь к этому стоимость монтажа и труб.
-- Разбей предложение на 2-3 тарифа (Плана), например: 'Базовый', 'Оптимальный', 'Премиум'.
-- Сначала напиши свои рассуждения в поле 'internal_reasoning', а затем заполни схему.
-"""
+    # 3. Формируем умный промпт с передачей структуры JSON
+    system_instruction = (
+        "Ты — Главный инженер и менеджер по продажам KOTEL.MSK.RU.\n"
+        "Твоя задача составить детальное коммерческое предложение.\n"
+        "ОБЯЗАТЕЛЬНЫЕ УСЛОВИЯ:\n"
+        f"- Используй СТРОГО следующее оборудование: {selected_boiler['model']} ({selected_boiler['power']} кВт).\n"
+        f"- Цена котла: {selected_boiler['price']} руб. Добавь к этому стоимость монтажа и труб.\n"
+        "- Разбей предложение на 2-3 тарифа (Плана), например: 'Базовый', 'Оптимальный', 'Премиум'.\n"
+        "- Сначала напиши свои рассуждения в поле 'internal_reasoning'.\n\n"
+        "ВНИМАНИЕ! Твой ответ должен быть СТРОГО валидным JSON без маркдауна и лишнего текста. "
+        "Соблюдай эту структуру:\n"
+        "{\n"
+        '  "internal_reasoning": "твой ход мыслей",\n'
+        '  "title": "...",\n'
+        '  "executive_summary": "...",\n'
+        '  "client_pain_points": [{"pain": "...", "solution": "..."}],\n'
+        '  "solution_steps": [{"step_name": "...", "description": "..."}],\n'
+        '  "plans": [\n'
+        '    {"name": "...", "description": "...", "budget_items": [{"item": "...", "price": "...", "time": "..."}]}\n'
+        "  ]\n"
+        "}"
+    )
 
-    # Добавляем фиктивное поле internal_reasoning, чтобы заставить модель "думать" перед ответом
-    # Google GenAI SDK позволяет передать Pydantic модель прямо в response_schema
-    # Это гарантирует 100% валидный JSON
     try:
         response = client.models.generate_content(
             model='gemma-3-27b-it',
             contents=system_instruction + f"\n\nЗАПРОС ОТ МЕНЕДЖЕРА: {prompt}",
             config=types.GenerateContentConfig(
-                response_mime_type="application/json",
-                # Мы просим вернуть JSON, соответствующий вашей модели Proposal (из models.py)
-                response_schema=Proposal, 
                 temperature=0.4
+                # ❌ МЫ УБРАЛИ response_schema и response_mime_type, чтобы API не ругался
             ),
         )
 
         if response.text:
-            logger.info("✅ Успешная генерация!")
-            return json.loads(response.text)
+            # ✅ Очищаем текст нейросети от возможных markdown-оберток (```json ... ```)
+            raw_json = response.text.strip()
+            if raw_json.startswith("```json"):
+                raw_json = raw_json[7:]
+            elif raw_json.startswith("```"):
+                raw_json = raw_json[3:]
+            if raw_json.endswith("```"):
+                raw_json = raw_json[:-3]
+                
+            logger.info("✅ Успешная генерация текста, парсим JSON...")
+            return json.loads(raw_json.strip())
+            
     except Exception as e:
         logger.error(f"Сбой генерации: {e}")
         return None
